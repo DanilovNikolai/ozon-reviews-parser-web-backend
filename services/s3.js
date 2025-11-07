@@ -2,10 +2,10 @@ const { S3Client, PutObjectCommand } = require('@aws-sdk/client-s3');
 
 const s3Client = new S3Client({
   region: 'ru-central1',
-  endpoint: 'https://storage.yandexcloud.net',
+  endpoint: process.env.YANDEX_ENDPOINT,
   credentials: {
-    accessKeyId: process.env.YANDEX_S3_KEY_ID,
-    secretAccessKey: process.env.YANDEX_S3_SECRET,
+    accessKeyId: process.env.YANDEX_ACCESS_KEY,
+    secretAccessKey: process.env.YANDEX_SECRET_KEY,
   },
 });
 
