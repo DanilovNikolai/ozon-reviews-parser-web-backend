@@ -1,4 +1,7 @@
+// services/s3.js
 const { S3Client, PutObjectCommand } = require('@aws-sdk/client-s3');
+const fs = require('fs');
+const path = require('path');
 
 const s3Client = new S3Client({
   region: 'ru-central1',
@@ -10,37 +13,33 @@ const s3Client = new S3Client({
 });
 
 /**
- * Загружает Buffer или локальный файл на S3
- * @param {Buffer|string} input - Buffer с данными или путь к локальному файлу
- * @param {string} folder - папка на S3
- * @param {string} [filename] - имя файла, если input — Buffer
+ * Загружает файл или Buffer в S3
+ * @param {string|Buffer} file - локальный путь или Buffer
+ * @param {string} folder - папка в S3
+ * @param {string} [filename] - имя файла (если Buffer)
  * @returns {Promise<string>} - URL загруженного файла
  */
 
-async function uploadToS3(input, folder = 'downloaded_files', filename) {
-  let fileBuffer;
-  let finalFilename;
-
-  if (Buffer.isBuffer(input)) {
-    fileBuffer = input;
-    if (!filename) throw new Error('Для Buffer необходимо указать имя файла');
-    finalFilename = filename;
-  } else if (typeof input === 'string') {
-    const fs = require('fs');
-    const path = require('path');
-    fileBuffer = fs.readFileSync(input);
-    finalFilename = path.basename(input);
+async function uploadToS3(file, folder = 'downloaded_files', filename = null) {
+  let fileContent;
+  if (Buffer.isBuffer(file)) {
+    fileContent = file;
+    filename = filename || `file_${Date.now()}.xlsx`;
+  } else if (typeof file === 'string') {
+    if (!fs.existsSync(file)) throw new Error(`Файл не найден: ${file}`);
+    fileContent = fs.readFileSync(file);
+    filename = filename || path.basename(file);
   } else {
-    throw new Error('uploadToS3 ожидает Buffer или путь к файлу');
+    throw new Error('uploadToS3: аргумент должен быть буффером или путём к файлу');
   }
 
-  const key = `${folder}/${Date.now()}_${finalFilename}`;
+  const key = `${folder}/${Date.now()}_${filename}`;
 
   await s3Client.send(
     new PutObjectCommand({
       Bucket: process.env.YANDEX_BUCKET,
       Key: key,
-      Body: fileBuffer,
+      Body: fileContent,
       ContentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     })
   );
@@ -49,20 +48,19 @@ async function uploadToS3(input, folder = 'downloaded_files', filename) {
 }
 
 /**
- * Скачивает файл с S3 в /tmp и возвращает локальный путь
+ * Скачивает файл с S3 по URL и сохраняет во временный локальный путь
  * @param {string} s3FileUrl
- * @returns {Promise<string>} - путь к локальному файлу
+ * @returns {Promise<string>} - локальный путь
  */
 
 async function downloadFromS3(s3FileUrl) {
-  const path = require('path');
-  const fs = require('fs');
   const axios = require('axios');
+  const tmpPath = path.join('/tmp', path.basename(s3FileUrl));
 
-  const localPath = path.join('/tmp', path.basename(s3FileUrl));
   const res = await axios.get(s3FileUrl, { responseType: 'arraybuffer' });
-  fs.writeFileSync(localPath, res.data);
-  return localPath;
+  fs.writeFileSync(tmpPath, res.data);
+
+  return tmpPath;
 }
 
 module.exports = { uploadToS3, downloadFromS3 };
