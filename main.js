@@ -50,7 +50,7 @@ async function parseReviewsFromUrl(
     });
 
     // Даём React и ленивой подгрузке время отработать
-    await page.waitForTimeout(3000);
+    await new Promise((r) => setTimeout(r, 3000));
 
     const htmlForHash = await page.evaluate(() => {
       const container = document.querySelector('[data-widget*="Review"]') || document.body;
@@ -97,7 +97,7 @@ async function parseReviewsFromUrl(
     await page.waitForSelector('[data-widget*="Review"]', { timeout: 15000 }).catch(() => {
       warnWithCapture('⚠️ Контейнер отзывов не найден после ожидания 15 секунд');
     });
-    await page.waitForTimeout(3000);
+    await new Promise((r) => setTimeout(r, 3000));
 
     try {
       const titleText = await page.title();
