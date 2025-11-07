@@ -39,22 +39,23 @@ async function parseReviewsFromUrl(
   let totalReviewsCount = 0;
 
   try {
-    // --- 1️⃣ Получение хэша для проверки дубликатов ---
+    // Получение хэша для проверки дубликатов
     const hashUrl = getReviewsUrlWithSort(url, 'score_asc');
-
     await page.goto(hashUrl, { waitUntil: 'domcontentloaded', timeout: CONFIG.nextPageTimeout });
-    await page.waitForSelector('[data-widget="webListReviews"]', { timeout: 15000 }).catch(() =>
-      logWithCapture('⚠️ Контейнер отзывов не найден при получении хэша')
-    );
-    await page.waitForTimeout(2000);
-
     logWithCapture('🕒 Страница для хэша загружена');
 
-    const htmlForHash = await page.evaluate(() => {
-      const container = document.querySelector('[data-widget="webListReviews"]');
-      return container ? container.innerHTML : '';
+    // Ждем появления контейнера отзывов
+    await page.waitForSelector('[data-widget*="Review"]', { timeout: 15000 }).catch(() => {
+      warnWithCapture('⚠️ Контейнер отзывов не найден после ожидания 15 секунд');
     });
 
+    // Даём React и ленивой подгрузке время отработать
+    await page.waitForTimeout(3000);
+
+    const htmlForHash = await page.evaluate(() => {
+      const container = document.querySelector('[data-widget*="Review"]') || document.body;
+      return container.innerHTML;
+    });
     const reviewsForHash = extractReviewsFromHtml(htmlForHash, mode);
     const hash = generateHashFromReviews(reviewsForHash);
 
@@ -88,20 +89,19 @@ async function parseReviewsFromUrl(
     seenUrls.push(url);
     hashForThisProduct = hash;
 
-    // --- 2️⃣ Основной парсинг ---
+    // Основной парсинг
     const reviewsUrl = getReviewsUrl(url);
     await page.goto(reviewsUrl, { waitUntil: 'domcontentloaded', timeout: CONFIG.nextPageTimeout });
-
-    await page.waitForSelector('[data-widget="webListReviews"]', { timeout: 20000 }).catch(() =>
-      logWithCapture('⚠️ Контейнер отзывов не найден при основном парсинге')
-    );
-    await page.waitForTimeout(3000);
-
     logWithCapture('🕒 Страница для парсинга загружена');
+
+    await page.waitForSelector('[data-widget*="Review"]', { timeout: 15000 }).catch(() => {
+      warnWithCapture('⚠️ Контейнер отзывов не найден после ожидания 15 секунд');
+    });
+    await page.waitForTimeout(3000);
 
     try {
       const titleText = await page.title();
-      const titleMatch = titleText.match(/([\d \s]+)\s+отзыв/i);
+      const titleMatch = titleText.match(/([\d \s]+)\s+отзыв/i);
       if (titleMatch) {
         totalReviewsCount = parseInt(titleMatch[1].replace(/[^\d]/g, ''), 10);
         logWithCapture(`📊 Отзывов всего: ${totalReviewsCount}`);
@@ -114,33 +114,39 @@ async function parseReviewsFromUrl(
     while (hasNextPage) {
       logWithCapture(`📄 Парсим страницу #${pageIndex}`);
 
-      await autoScroll(page);
-      await sleep(800);
-      await expandAllSpoilers(page);
+      // Медленный scroll для подгрузки ленивых отзывов
+      await page.evaluate(async () => {
+        await new Promise((resolve) => {
+          let totalHeight = 0;
+          const distance = 400;
+          const timer = setInterval(() => {
+            window.scrollBy(0, distance);
+            totalHeight += distance;
+            if (totalHeight >= document.body.scrollHeight - window.innerHeight) {
+              clearInterval(timer);
+              resolve();
+            }
+          }, 300);
+        });
+      });
       await sleep(500);
+      await expandAllSpoilers(page);
+      await sleep(300);
 
       if (pageIndex > CONFIG.maxPagesPerSKU) {
         warnWithCapture(`⛔ Достигнут лимит страниц (${CONFIG.maxPagesPerSKU})`);
         break;
       }
 
-      // --- гарантированное ожидание DOM ---
-      await page.waitForSelector('[data-widget="webListReviews"]', { timeout: 10000 }).catch(() =>
-        logWithCapture('⚠️ Контейнер не найден при парсинге страницы')
-      );
-
       const html = await page.evaluate(() => {
-        const container = document.querySelector('[data-widget="webListReviews"]');
-        return container ? container.innerHTML : '';
+        const container = document.querySelector('[data-widget*="Review"]') || document.body;
+        return container.innerHTML;
       });
-
       const reviews = extractReviewsFromHtml(html, mode);
+
       for (const review of reviews) review.hash = hashForThisProduct;
 
-      if (mode === '3' && reviews.length === 0) {
-        logWithCapture('⚠️ Отзывов не найдено, прерываю цикл');
-        break;
-      }
+      if (mode === '3' && reviews.length === 0) break;
 
       allReviews.push(...reviews);
       collectedForSave.push(...reviews);
