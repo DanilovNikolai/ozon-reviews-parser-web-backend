@@ -1,6 +1,6 @@
 const express = require('express');
 const { parseReviewsFromUrl } = require('./main');
-const { downloadFromS3, uploadToS3 } = require('./services/s3');
+const { downloadFromS3 } = require('./services/s3');
 const { readExcelLinks, writeExcelReviews } = require('./services/excel');
 
 const app = express();
@@ -18,7 +18,7 @@ app.post('/parse', async (req, res) => {
     const urls = await readExcelLinks(localInputPath);
     const allResults = [];
 
-    // Парсинг
+    // Парсинг товаров
     for (const url of urls) {
       const result = await parseReviewsFromUrl(url, mode, (partial) => {
         console.log(`Промежуточное сохранение: ${partial.reviews.length} отзывов`);
@@ -26,11 +26,8 @@ app.post('/parse', async (req, res) => {
       allResults.push(result);
     }
 
-    // Сохранить результаты в новый Excel
-    const outputPath = await writeExcelReviews(allResults);
-
-    // Загрузить в S3
-    const s3OutputUrl = await uploadToS3(outputPath, 'downloaded_files');
+    // Сформировать Excel и сразу загрузить на S3
+    const s3OutputUrl = await writeExcelReviews(allResults);
 
     // Сообщить в Next.js API, что готово
     if (callbackUrl) {
