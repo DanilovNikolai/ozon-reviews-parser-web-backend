@@ -41,19 +41,11 @@ async function parseReviewsFromUrl(
   try {
     // Получение хэша для проверки дубликатов
     const hashUrl = getReviewsUrlWithSort(url, 'score_asc');
-    await page.goto(hashUrl, { waitUntil: 'domcontentloaded', timeout: CONFIG.nextPageTimeout });
+    await page.goto(hashUrl, { waitUntil: 'networkidle2', timeout: CONFIG.nextPageTimeout });
     logWithCapture('🕒 Страница для хэша загружена');
 
-    // Ждем появления контейнера отзывов
-    await page.waitForSelector('[data-widget*="Review"]', { timeout: 15000 }).catch(() => {
-      warnWithCapture('⚠️ Контейнер отзывов не найден после ожидания 15 секунд');
-    });
-
-    // Даём React и ленивой подгрузке время отработать
-    await new Promise((r) => setTimeout(r, 3000));
-
     const htmlForHash = await page.evaluate(() => {
-      const container = document.querySelector('[data-widget*="Review"]') || document.body;
+      const container = document.querySelector('[data-widget="reviews"]') || document.body;
       return container.innerHTML;
     });
     const reviewsForHash = extractReviewsFromHtml(htmlForHash, mode);
@@ -91,13 +83,8 @@ async function parseReviewsFromUrl(
 
     // Основной парсинг
     const reviewsUrl = getReviewsUrl(url);
-    await page.goto(reviewsUrl, { waitUntil: 'domcontentloaded', timeout: CONFIG.nextPageTimeout });
+    await page.goto(reviewsUrl, { waitUntil: 'networkidle2', timeout: CONFIG.nextPageTimeout });
     logWithCapture('🕒 Страница для парсинга загружена');
-
-    await page.waitForSelector('[data-widget*="Review"]', { timeout: 15000 }).catch(() => {
-      warnWithCapture('⚠️ Контейнер отзывов не найден после ожидания 15 секунд');
-    });
-    await new Promise((r) => setTimeout(r, 3000));
 
     try {
       const titleText = await page.title();
@@ -113,33 +100,20 @@ async function parseReviewsFromUrl(
 
     while (hasNextPage) {
       logWithCapture(`📄 Парсим страницу #${pageIndex}`);
-
-      // Медленный scroll для подгрузки ленивых отзывов
-      await page.evaluate(async () => {
-        await new Promise((resolve) => {
-          let totalHeight = 0;
-          const distance = 400;
-          const timer = setInterval(() => {
-            window.scrollBy(0, distance);
-            totalHeight += distance;
-            if (totalHeight >= document.body.scrollHeight - window.innerHeight) {
-              clearInterval(timer);
-              resolve();
-            }
-          }, 300);
-        });
-      });
+      await autoScroll(page);
       await sleep(500);
       await expandAllSpoilers(page);
       await sleep(300);
 
       if (pageIndex > CONFIG.maxPagesPerSKU) {
-        warnWithCapture(`⛔ Достигнут лимит страниц (${CONFIG.maxPagesPerSKU})`);
+        warnWithCapture(
+          `⛔ Достигнут лимит страниц (${CONFIG.maxPagesPerSKU}) в рамках одной сессии`
+        );
         break;
       }
 
       const html = await page.evaluate(() => {
-        const container = document.querySelector('[data-widget*="Review"]') || document.body;
+        const container = document.querySelector('[data-widget="reviews"]') || document.body;
         return container.innerHTML;
       });
       const reviews = extractReviewsFromHtml(html, mode);
@@ -153,6 +127,7 @@ async function parseReviewsFromUrl(
 
       logWithCapture(`📦 Всего собрано: ${allReviews.length}`);
 
+      // В веб-версии промежуточное сохранение не пишем в файл, но можно вызвать колбэк
       if (collectedForSave.length >= CONFIG.saveInterval) {
         onPartialSave({
           productName: productNameMatch,
