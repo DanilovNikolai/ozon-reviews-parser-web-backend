@@ -10,19 +10,23 @@ const { logWithCapture } = require('../utils');
  * @param {string} filePath - локальный путь к файлу, скачанному с S3
  * @returns {Promise<string[]>} - массив ссылок на товары
  */
-async function readExcelLinks(filePath) {
-  logWithCapture(`📥 Читаю Excel: ${filePath}`);
 
-  if (!fs.existsSync(filePath)) {
-    throw new Error(`Файл не найден: ${filePath}`);
+async function readExcelLinks(input) {
+  logWithCapture(`📥 Читаю Excel`);
+
+  let workbook;
+  if (Buffer.isBuffer(input)) {
+    workbook = XLSX.read(input, { type: 'buffer' });
+  } else if (typeof input === 'string') {
+    workbook = XLSX.readFile(input);
+  } else {
+    throw new Error('Invalid input to readExcelLinks');
   }
 
-  const workbook = XLSX.readFile(filePath);
   const sheetName = workbook.SheetNames[0];
   const sheet = workbook.Sheets[sheetName];
   const data = XLSX.utils.sheet_to_json(sheet, { header: 1 });
 
-  // Фильтруем пустые строки и оставляем только корректные ссылки
   const urls = data
     .flat()
     .filter((x) => typeof x === 'string' && x.startsWith('https://www.ozon.ru/product/'));
