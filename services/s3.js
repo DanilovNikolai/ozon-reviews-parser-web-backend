@@ -1,47 +1,38 @@
-const AWS = require('aws-sdk');
+const { S3Client, GetObjectCommand, PutObjectCommand } = require('@aws-sdk/client-s3');
 const fs = require('fs');
 const path = require('path');
 const axios = require('axios');
 
-const s3 = new AWS.S3({
-  endpoint: 'https://storage.yandexcloud.net',
+const s3Client = new S3Client({
   region: 'ru-central1',
+  endpoint: 'https://storage.yandexcloud.net',
   credentials: {
     accessKeyId: process.env.YANDEX_S3_KEY_ID,
     secretAccessKey: process.env.YANDEX_S3_SECRET,
   },
 });
 
-async function uploadToS3(input, keyOrFolder) {
-  let buffer;
-  let key;
+async function uploadToS3(localPath, folder = 'downloaded_files') {
+  const fileContent = fs.readFileSync(localPath);
+  const filename = path.basename(localPath);
+  const key = `${folder}/${Date.now()}_${filename}`;
 
-  if (Buffer.isBuffer(input)) {
-    key = typeof keyOrFolder === 'string' ? keyOrFolder : `downloaded_files/${Date.now()}.xlsx`;
-    buffer = input;
-  } else if (typeof input === 'string' && fs.existsSync(input)) {
-    buffer = fs.readFileSync(input);
-    key = `${keyOrFolder}/${path.basename(input)}`;
-  } else {
-    throw new Error('Invalid input for uploadToS3');
-  }
-
-  await s3
-    .putObject({
-      Bucket: process.env.YANDEX_S3_BUCKET,
+  await s3Client.send(
+    new PutObjectCommand({
+      Bucket: process.env.YANDEX_BUCKET,
       Key: key,
-      Body: buffer,
+      Body: fileContent,
       ContentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     })
-    .promise();
+  );
 
-  return `https://${process.env.YANDEX_S3_BUCKET}.storage.yandexcloud.net/${key}`;
+  return `https://storage.yandexcloud.net/${process.env.YANDEX_BUCKET}/${key}`;
 }
 
-async function downloadFromS3(fileUrl) {
-  const localPath = path.join('/tmp', path.basename(fileUrl));
-  const response = await axios.get(fileUrl, { responseType: 'arraybuffer' });
-  fs.writeFileSync(localPath, response.data);
+async function downloadFromS3(s3FileUrl) {
+  const localPath = path.join('/tmp', path.basename(s3FileUrl));
+  const res = await axios.get(s3FileUrl, { responseType: 'arraybuffer' });
+  fs.writeFileSync(localPath, res.data);
   return localPath;
 }
 
