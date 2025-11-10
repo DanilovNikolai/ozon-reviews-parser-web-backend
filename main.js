@@ -15,14 +15,6 @@ const {
 
 const { goToNextPageByClick, launchBrowserWithCookies } = require('./helpers');
 
-/**
- * Основная функция парсинга
- * @param {string} url - ссылка на товар
- * @param {string} mode - режим парсинга: 1, 2, 3
- * @param {function} onPartialSave - колбэк для обработки промежуточных данных
- * @param {array} seenHashes - массив уже обработанных хэшей
- * @param {array} seenUrls - массив уже обработанных URL
- */
 async function parseReviewsFromUrl(
   url,
   mode = '3',
@@ -39,15 +31,33 @@ async function parseReviewsFromUrl(
   let totalReviewsCount = 0;
 
   try {
-    // Получение хэша для проверки дубликатов
+    // --- 1️⃣ Получаем хэш для проверки дубликатов ---
     const hashUrl = getReviewsUrlWithSort(url, 'score_asc');
-    await page.goto(hashUrl, { waitUntil: 'networkidle2', timeout: CONFIG.nextPageTimeout });
+    await page.goto(hashUrl, {
+      waitUntil: ['networkidle0', 'domcontentloaded'],
+      timeout: CONFIG.nextPageTimeout,
+    });
     logWithCapture('🕒 Страница для хэша загружена');
 
+    // Проверяем, не попали ли на антибот
+    const currentUrl = page.url();
+    if (currentUrl.includes('captcha') || currentUrl.includes('antibot')) {
+      warnWithCapture(`🚨 Ozon вернул антибот страницу: ${currentUrl}`);
+    }
+
+    await page.screenshot({ path: '/tmp/debug_hash.png', fullPage: true });
+    logWithCapture('📸 Скриншот сохранён: /tmp/debug_hash.png');
+
+    // Ожидаем появления блока отзывов
+    await page
+      .waitForSelector('[data-widget="webListReviews"]', { timeout: 20000 })
+      .catch(() => warnWithCapture('⚠️ Блок отзывов не найден (timeout при загрузке хэша)'));
+
     const htmlForHash = await page.evaluate(() => {
-      const container = document.querySelector('[data-widget="reviews"]') || document.body;
+      const container = document.querySelector('[data-widget="webListReviews"]') || document.body;
       return container.innerHTML;
     });
+
     const reviewsForHash = extractReviewsFromHtml(htmlForHash, mode);
     const hash = generateHashFromReviews(reviewsForHash);
 
@@ -81,7 +91,7 @@ async function parseReviewsFromUrl(
     seenUrls.push(url);
     hashForThisProduct = hash;
 
-    // Основной парсинг
+    // --- 2️⃣ Основной парсинг ---
     const html = await page.content();
     console.log('📏 Длина HTML:', html.length);
     if (html.length < 100000) {
@@ -93,28 +103,52 @@ async function parseReviewsFromUrl(
 
     const reviewsUrl = getReviewsUrl(url);
     console.log(`🌐 Переход на страницу: ${url}`);
-    await page.goto(reviewsUrl, { waitUntil: 'networkidle2', timeout: CONFIG.nextPageTimeout });
+
+    await page.goto(reviewsUrl, {
+      waitUntil: ['networkidle0', 'domcontentloaded'],
+      timeout: CONFIG.nextPageTimeout,
+    });
     console.log(`✅ Страница загружена: ${page.url()}`);
     logWithCapture('🕒 Страница для парсинга загружена');
 
+    // Проверяем на антибот снова
+    const finalUrl = page.url();
+    if (finalUrl.includes('captcha') || finalUrl.includes('antibot')) {
+      warnWithCapture(`🚨 Ozon вернул антибот страницу при парсинге: ${finalUrl}`);
+    }
+
+    // Ожидаем появления блока отзывов
+    await page
+      .waitForSelector('[data-widget="webListReviews"]', { timeout: 20000 })
+      .catch(() => warnWithCapture('⚠️ Блок отзывов не найден (timeout при парсинге)'));
+
+    // Делаем скриншот для отладки
+    await page.screenshot({ path: '/tmp/debug_reviews.png', fullPage: true });
+    logWithCapture('📸 Скриншот сохранён: /tmp/debug_reviews.png');
+
+    // Небольшая случайная задержка (Promise)
+    await new Promise((res) => setTimeout(res, 3000 + Math.random() * 2000));
+
     try {
       const titleText = await page.title();
-      const titleMatch = titleText.match(/([\d \s]+)\s+отзыв/i);
+      const titleMatch = titleText.match(/([\d \s]+)\s+отзыв/i);
       if (titleMatch) {
         totalReviewsCount = parseInt(titleMatch[1].replace(/[^\d]/g, ''), 10);
         logWithCapture(`📊 Отзывов всего: ${totalReviewsCount}`);
       }
     } catch {}
 
+    // --- 3️⃣ Цикл по страницам отзывов ---
     let pageIndex = 1;
     let hasNextPage = true;
 
     while (hasNextPage) {
       logWithCapture(`📄 Парсим страницу #${pageIndex}`);
+
       await autoScroll(page);
-      await sleep(500);
+      await new Promise((res) => setTimeout(res, 500));
       await expandAllSpoilers(page);
-      await sleep(300);
+      await new Promise((res) => setTimeout(res, 300));
 
       if (pageIndex > CONFIG.maxPagesPerSKU) {
         warnWithCapture(
@@ -124,7 +158,7 @@ async function parseReviewsFromUrl(
       }
 
       const html = await page.evaluate(() => {
-        const container = document.querySelector('[data-widget="reviews"]') || document.body;
+        const container = document.querySelector('[data-widget="webListReviews"]') || document.body;
         return container.innerHTML;
       });
       const reviews = extractReviewsFromHtml(html, mode);
@@ -138,7 +172,6 @@ async function parseReviewsFromUrl(
 
       logWithCapture(`📦 Всего собрано: ${allReviews.length}`);
 
-      // В веб-версии промежуточное сохранение не пишем в файл, но можно вызвать колбэк
       if (collectedForSave.length >= CONFIG.saveInterval) {
         onPartialSave({
           productName: productNameMatch,
@@ -150,6 +183,9 @@ async function parseReviewsFromUrl(
 
       hasNextPage = await goToNextPageByClick(page);
       pageIndex++;
+
+      // случайная пауза между страницами
+      await new Promise((res) => setTimeout(res, 2000 + Math.random() * 1000));
     }
 
     if (collectedForSave.length > 0) {
