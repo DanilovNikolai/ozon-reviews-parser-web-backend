@@ -83,7 +83,9 @@ async function parseReviewsFromUrl(
 
     // Основной парсинг
     const reviewsUrl = getReviewsUrl(url);
+    console.log(`🌐 Переход на страницу: ${url}`);
     await page.goto(reviewsUrl, { waitUntil: 'networkidle2', timeout: CONFIG.nextPageTimeout });
+    console.log(`✅ Страница загружена: ${page.url()}`);
     logWithCapture('🕒 Страница для парсинга загружена');
 
     try {
