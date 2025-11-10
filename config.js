@@ -1,5 +1,5 @@
 const CONFIG = {
-  headless: 'new',
+  headless: false,
   scrollDelay: 300,
   maxScrollAttempts: 50,
   saveInterval: 200,
