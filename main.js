@@ -82,6 +82,15 @@ async function parseReviewsFromUrl(
     hashForThisProduct = hash;
 
     // Основной парсинг
+    const html = await page.content();
+    console.log('📏 Длина HTML:', html.length);
+    if (html.length < 100000) {
+      console.log('⚠️ Похоже, страница урезанная (антибот защита Ozon).');
+    }
+    if (html.includes('/captcha')) {
+      console.log('🚫 Ozon показывает капчу!');
+    }
+
     const reviewsUrl = getReviewsUrl(url);
     console.log(`🌐 Переход на страницу: ${url}`);
     await page.goto(reviewsUrl, { waitUntil: 'networkidle2', timeout: CONFIG.nextPageTimeout });
