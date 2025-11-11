@@ -29,7 +29,7 @@ async function launchBrowserWithCookies() {
   }
 
   const browser = await puppeteer.launch({
-    headless: String(process.env.PUPPETEER_HEADLESS).toLowerCase() === 'true' ? true : false,
+    headless: CONFIG.headless,
     userDataDir,
     args,
     defaultViewport: { width: 1920, height: 1080 },
