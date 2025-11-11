@@ -1,4 +1,4 @@
-// main.js — улучшенная стабильная версия
+// main.js — стабильная версия с защитой от зависаний и тайм-аутов
 const { CONFIG } = require('./config');
 const { extractReviewsFromHtml } = require('./extractors/extractReviewsFromHtml');
 const {
@@ -15,6 +15,18 @@ const {
 } = require('./utils');
 
 const { goToNextPageByClick, launchBrowserWithCookies } = require('./helpers');
+
+/**
+ * Безопасный evaluate с таймаутом
+ */
+async function safeEvaluate(page, fn, timeout = 15000) {
+  return Promise.race([
+    page.evaluate(fn),
+    new Promise((_, reject) =>
+      setTimeout(() => reject(new Error('evaluate timeout exceeded')), timeout)
+    ),
+  ]);
+}
 
 async function parseReviewsFromUrl(
   url,
@@ -48,22 +60,23 @@ async function parseReviewsFromUrl(
     await page.screenshot({ path: '/tmp/debug_hash.png', fullPage: true });
     logWithCapture('📸 Скриншот сохранён: /tmp/debug_hash.png');
 
-    // Проверяем антибот
     const currentUrl = page.url();
     if (currentUrl.includes('captcha') || currentUrl.includes('antibot')) {
       warnWithCapture(`🚨 Ozon вернул антибот страницу: ${currentUrl}`);
     }
 
-    // Извлекаем HTML для хэша
-    const htmlForHash = await page.evaluate(() => {
-      const container = document.querySelector('[data-widget="webListReviews"]') || document.body;
-      return container.innerHTML;
-    });
+    const htmlForHash = await safeEvaluate(
+      page,
+      () => {
+        const container = document.querySelector('[data-widget="webListReviews"]') || document.body;
+        return container.innerHTML;
+      },
+      10000
+    );
 
     const reviewsForHash = extractReviewsFromHtml(htmlForHash, mode);
     const hash = generateHashFromReviews(reviewsForHash);
 
-    // Проверяем дубликаты
     const existingIndex = seenHashes.findIndex((h) => h === hash);
     if (existingIndex !== -1) {
       const urlMatch = seenUrls[existingIndex];
@@ -110,17 +123,14 @@ async function parseReviewsFromUrl(
       warnWithCapture(`⚠️ Ошибка загрузки страницы отзывов: ${err.message}`);
     }
 
-    // Проверяем на антибот
     const finalUrl = page.url();
     if (finalUrl.includes('captcha') || finalUrl.includes('antibot')) {
       warnWithCapture(`🚨 Ozon вернул антибот страницу при парсинге: ${finalUrl}`);
     }
 
-    // Делаем скриншот для отладки
     await page.screenshot({ path: '/tmp/debug_reviews.png', fullPage: true });
     logWithCapture('📸 Скриншот сохранён: /tmp/debug_reviews.png');
 
-    // Извлекаем общее количество отзывов
     try {
       const titleText = await page.title();
       const titleMatch = titleText.match(/([\d\s]+)\s+отзыв/i);
@@ -140,7 +150,13 @@ async function parseReviewsFromUrl(
       logWithCapture(`📄 Парсим страницу #${pageIndex}`);
 
       try {
-        await autoScroll(page);
+        // защищённый autoScroll
+        await Promise.race([
+          autoScroll(page),
+          sleep(20000).then(() => {
+            throw new Error('autoScroll timeout');
+          }),
+        ]);
         await sleep(800 + Math.random() * 500);
         await expandAllSpoilers(page);
         await sleep(300 + Math.random() * 300);
@@ -153,10 +169,21 @@ async function parseReviewsFromUrl(
         break;
       }
 
-      const html = await page.evaluate(() => {
-        const container = document.querySelector('[data-widget="webListReviews"]') || document.body;
-        return container.innerHTML;
-      });
+      let html;
+      try {
+        html = await safeEvaluate(
+          page,
+          () => {
+            const container =
+              document.querySelector('[data-widget="webListReviews"]') || document.body;
+            return container.innerHTML;
+          },
+          10000
+        );
+      } catch {
+        warnWithCapture('⚠️ Ошибка получения HTML страницы');
+        html = '';
+      }
 
       const reviews = extractReviewsFromHtml(html, mode);
       for (const review of reviews) review.hash = hashForThisProduct;
@@ -195,7 +222,6 @@ async function parseReviewsFromUrl(
       await sleep(2000 + Math.random() * 1500);
     }
 
-    // --- Финальное сохранение ---
     if (collectedForSave.length > 0) {
       onPartialSave({
         productName: productNameMatch,
@@ -225,8 +251,16 @@ async function parseReviewsFromUrl(
       errorOccurred: true,
     };
   } finally {
-    await browser.close();
-    logWithCapture('🛑 Браузер закрыт');
+    try {
+      await browser.close();
+      logWithCapture('🛑 Браузер закрыт');
+    } catch {
+      warnWithCapture(
+        '⚠️ Не удалось корректно закрыть браузер — выполняем принудительное завершение'
+      );
+      const browserProcess = browser.process();
+      if (browserProcess) browserProcess.kill('SIGKILL');
+    }
   }
 }
 
