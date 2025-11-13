@@ -1,8 +1,8 @@
 const CONFIG = {
-  headless: 'new',
-  scrollDelay: 300,
+  headless: false,
+  scrollDelay: 500,
   maxScrollAttempts: 50,
-  saveInterval: 200,
+  saveInterval: 1000,
   nextPageTimeout: 30000,
   maxPagesPerSKU: 400,
 };
