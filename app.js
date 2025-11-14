@@ -1,7 +1,8 @@
 const express = require('express');
 const { parseReviewsFromUrl } = require('./main');
-const { downloadFromS3 } = require('./services/s3');
+const { downloadFromS3, uploadScreenshot } = require('./services/s3');
 const { readExcelLinks, writeExcelReviews } = require('./services/excel');
+const fs = require('fs');
 
 const app = express();
 app.use(express.json({ limit: '10mb' }));
@@ -24,6 +25,20 @@ app.post('/parse', async (req, res) => {
         console.log(`Промежуточное сохранение: ${partial.reviews.length} отзывов`);
       });
       allResults.push(result);
+
+      // Загрузка скриншотов в s3
+      const screenshots = ['/tmp/debug_hash.png', '/tmp/debug_reviews.png'];
+
+      for (const file of screenshots) {
+        try {
+          if (fs.existsSync(file)) {
+            await uploadScreenshot(file);
+            console.log(`📤 Скриншот загружен в S3: ${file}`);
+          }
+        } catch (err) {
+          console.warn(`⚠ Ошибка загрузки скриншота ${file}:`, err.message);
+        }
+      }
     }
 
     // Сформировать Excel и сразу загрузить на S3
@@ -31,11 +46,15 @@ app.post('/parse', async (req, res) => {
 
     // Сообщить в Next.js API, что готово
     if (callbackUrl) {
-      await fetch(callbackUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ fileUrl: s3OutputUrl }),
-      });
+      try {
+        await fetch(callbackUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ fileUrl: s3OutputUrl }),
+        });
+      } catch (err) {
+        console.warn('⚠ Ошибка callback запроса:', err.message);
+      }
     }
 
     res.json({ success: true, s3OutputUrl });
