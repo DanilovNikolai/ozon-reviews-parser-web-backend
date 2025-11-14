@@ -14,10 +14,12 @@ const s3Client = new S3Client({
 
 function detectContentType(filename) {
   const ext = filename.toLowerCase();
+
   if (ext.endsWith('.png')) return 'image/png';
   if (ext.endsWith('.jpg') || ext.endsWith('.jpeg')) return 'image/jpeg';
   if (ext.endsWith('.xlsx'))
     return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+
   return 'application/octet-stream';
 }
 
@@ -27,10 +29,12 @@ async function uploadToS3(file, folder = 'downloaded_files', filename = null) {
   if (Buffer.isBuffer(file)) {
     fileContent = file;
     filename = filename || `file_${Date.now()}`;
-  } else {
+  } else if (typeof file === 'string') {
     if (!fs.existsSync(file)) throw new Error(`Файл не найден: ${file}`);
     fileContent = fs.readFileSync(file);
     filename = filename || path.basename(file);
+  } else {
+    throw new Error('uploadToS3: аргумент должен быть Buffer или строкой пути');
   }
 
   const contentType = detectContentType(filename);
@@ -48,16 +52,18 @@ async function uploadToS3(file, folder = 'downloaded_files', filename = null) {
   return `https://storage.yandexcloud.net/${process.env.YANDEX_BUCKET}/${key}`;
 }
 
-async function uploadScreenshot(localPath) {
-  return uploadToS3(localPath, 'debug_screenshots');
+async function downloadFromS3(s3FileUrl) {
+  const axios = require('axios');
+  const tmpPath = path.join('/tmp', path.basename(s3FileUrl));
+
+  const res = await axios.get(s3FileUrl, { responseType: 'arraybuffer' });
+  fs.writeFileSync(tmpPath, res.data);
+
+  return tmpPath;
 }
 
-async function downloadFromS3(url) {
-  const axios = require('axios');
-  const tmp = path.join('/tmp', path.basename(url));
-  const res = await axios.get(url, { responseType: 'arraybuffer' });
-  fs.writeFileSync(tmp, res.data);
-  return tmp;
+async function uploadScreenshot(localPath) {
+  return uploadToS3(localPath, 'debug_screenshots');
 }
 
 module.exports = { uploadToS3, uploadScreenshot, downloadFromS3 };
