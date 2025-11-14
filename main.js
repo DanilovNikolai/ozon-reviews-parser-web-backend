@@ -14,6 +14,7 @@ const {
 } = require('./utils');
 
 const { goToNextPageByClick, launchBrowserWithCookies } = require('./helpers');
+const fs = require('fs');
 
 async function parseReviewsFromUrl(
   url,
@@ -30,8 +31,11 @@ async function parseReviewsFromUrl(
   const collectedForSave = [];
   let totalReviewsCount = 0;
 
+  // список всех скриншотов
+  const screenshots = [];
+
   try {
-    // --- 1️⃣ Получаем хэш для проверки дубликатов ---
+    // --- 1️⃣ Получаем хэш ---
     const hashUrl = getReviewsUrlWithSort(url, 'score_asc');
     await page.goto(hashUrl, {
       waitUntil: ['networkidle0', 'domcontentloaded'],
@@ -39,19 +43,21 @@ async function parseReviewsFromUrl(
     });
     logWithCapture('🕒 Страница для хэша загружена');
 
-    // Проверяем, не попали ли на антибот
+    const screenshotHash = `/tmp/debug_hash.png`;
+    await page.screenshot({ path: screenshotHash, fullPage: true });
+    screenshots.push(screenshotHash);
+    logWithCapture('📸 Скриншот сохранён: debug_hash.png');
+
+    // Проверка антибота
     const currentUrl = page.url();
     if (currentUrl.includes('captcha') || currentUrl.includes('antibot')) {
-      warnWithCapture(`🚨 Ozon вернул антибот страницу: ${currentUrl}`);
+      warnWithCapture(`🚨 AntiBot (hash stage): ${currentUrl}`);
     }
 
-    await page.screenshot({ path: '/tmp/debug_hash.png', fullPage: true });
-    logWithCapture('📸 Скриншот сохранён: /tmp/debug_hash.png');
-
-    // Ожидаем появления блока отзывов
+    // Ждём блок отзывов
     await page
       .waitForSelector('[data-widget="webListReviews"]', { timeout: 20000 })
-      .catch(() => warnWithCapture('⚠️ Блок отзывов не найден (timeout при загрузке хэша)'));
+      .catch(() => warnWithCapture('⚠️ Блок отзывов не найден (hash stage)'));
 
     const htmlForHash = await page.evaluate(() => {
       const container = document.querySelector('[data-widget="webListReviews"]') || document.body;
@@ -61,29 +67,16 @@ async function parseReviewsFromUrl(
     const reviewsForHash = extractReviewsFromHtml(htmlForHash, mode);
     const hash = generateHashFromReviews(reviewsForHash);
 
+    // Проверка дубликатов
     const existingIndex = seenHashes.findIndex((h) => h === hash);
     if (existingIndex !== -1) {
-      const urlMatch = seenUrls[existingIndex];
-      warnWithCapture(`🔁 Найден дубликат товара. Совпадает с: ${urlMatch}`);
       return {
+        isDuplicate: true,
+        screenshots,
+        logs: [...getLogBuffer()],
         productName: productNameMatch,
         totalCount: 0,
-        reviews: [
-          {
-            url,
-            product: 'ДУБЛИКАТ ТОВАРА',
-            comment: '',
-            rating: '',
-            date: '',
-            user: '',
-            ordinal: '',
-            hash,
-            urlMatch,
-          },
-        ],
-        logs: [...getLogBuffer()],
-        errorOccurred: false,
-        isDuplicate: true,
+        reviews: [],
       };
     }
 
@@ -92,85 +85,62 @@ async function parseReviewsFromUrl(
     hashForThisProduct = hash;
 
     // --- 2️⃣ Основной парсинг ---
-    const html = await page.content();
-    console.log('📏 Длина HTML:', html.length);
-    if (html.length < 100000) {
-      console.log('⚠️ Похоже, страница урезанная (антибот защита Ozon).');
-    }
-    if (html.includes('/captcha')) {
-      console.log('🚫 Ozon показывает капчу!');
-    }
-
     const reviewsUrl = getReviewsUrl(url);
-    console.log(`🌐 Переход на страницу: ${url}`);
-
     await page.goto(reviewsUrl, {
       waitUntil: ['networkidle0', 'domcontentloaded'],
       timeout: CONFIG.nextPageTimeout,
     });
-    console.log(`✅ Страница загружена: ${page.url()}`);
-    logWithCapture('🕒 Страница для парсинга загружена');
 
-    // Проверяем на антибот снова
-    const finalUrl = page.url();
-    if (finalUrl.includes('captcha') || finalUrl.includes('antibot')) {
-      warnWithCapture(`🚨 Ozon вернул антибот страницу при парсинге: ${finalUrl}`);
+    logWithCapture(`🕒 Страница отзывов загружена: ${page.url()}`);
+
+    const screenshotMain = `/tmp/debug_reviews.png`;
+    await page.screenshot({ path: screenshotMain, fullPage: true });
+    screenshots.push(screenshotMain);
+
+    // AntiBot
+    if (page.url().includes('captcha') || page.url().includes('antibot')) {
+      warnWithCapture(`🚨 Ozon AntiBot на странице отзывов`);
     }
 
-    // Ожидаем появления блока отзывов
-    await page
-      .waitForSelector('[data-widget="webListReviews"]', { timeout: 20000 })
-      .catch(() => warnWithCapture('⚠️ Блок отзывов не найден (timeout при парсинге)'));
-
-    // Делаем скриншот для отладки
-    await page.screenshot({ path: '/tmp/debug_reviews.png', fullPage: true });
-    logWithCapture('📸 Скриншот сохранён: /tmp/debug_reviews.png');
-
-    // Небольшая случайная задержка (Promise)
-    await new Promise((res) => setTimeout(res, 3000 + Math.random() * 2000));
-
+    // Общее количество отзывов
     try {
-      const titleText = await page.title();
-      const titleMatch = titleText.match(/([\d \s]+)\s+отзыв/i);
-      if (titleMatch) {
-        totalReviewsCount = parseInt(titleMatch[1].replace(/[^\d]/g, ''), 10);
-        logWithCapture(`📊 Отзывов всего: ${totalReviewsCount}`);
+      const title = await page.title();
+      const match = title.match(/([\d\s]+)\s+отзыв/i);
+      if (match) {
+        totalReviewsCount = parseInt(match[1].replace(/[^\d]/g, ''), 10);
       }
     } catch {}
 
-    // --- 3️⃣ Цикл по страницам отзывов ---
+    // --- 3️⃣ Цикл страниц ---
     let pageIndex = 1;
     let hasNextPage = true;
 
     while (hasNextPage) {
       logWithCapture(`📄 Парсим страницу #${pageIndex}`);
 
-      await autoScroll(page);
-      await new Promise((res) => setTimeout(res, 500));
-      await expandAllSpoilers(page);
-      await new Promise((res) => setTimeout(res, 300));
-
-      if (pageIndex > CONFIG.maxPagesPerSKU) {
-        warnWithCapture(
-          `⛔ Достигнут лимит страниц (${CONFIG.maxPagesPerSKU}) в рамках одной сессии`
-        );
-        break;
+      // 📌 Делаем скриншот КАЖДОЙ страницы
+      const screenshotPerPage = `/tmp/page_${pageIndex}.png`;
+      try {
+        await page.screenshot({ path: screenshotPerPage, fullPage: true });
+        screenshots.push(screenshotPerPage);
+      } catch (err) {
+        warnWithCapture(`⚠️ Ошибка скриншота page_${pageIndex}.png: ${err.message}`);
       }
+
+      await autoScroll(page);
+      await sleep(500);
+      await expandAllSpoilers(page);
+      await sleep(300);
 
       const html = await page.evaluate(() => {
         const container = document.querySelector('[data-widget="webListReviews"]') || document.body;
         return container.innerHTML;
       });
       const reviews = extractReviewsFromHtml(html, mode);
-
-      for (const review of reviews) review.hash = hashForThisProduct;
-
-      if (mode === '3' && reviews.length === 0) break;
+      reviews.forEach((r) => (r.hash = hashForThisProduct));
 
       allReviews.push(...reviews);
       collectedForSave.push(...reviews);
-
-      logWithCapture(`📦 Всего собрано: ${allReviews.length}`);
 
       if (collectedForSave.length >= CONFIG.saveInterval) {
         onPartialSave({
@@ -184,8 +154,7 @@ async function parseReviewsFromUrl(
       hasNextPage = await goToNextPageByClick(page);
       pageIndex++;
 
-      // случайная пауза между страницами
-      await new Promise((res) => setTimeout(res, 2000 + Math.random() * 1000));
+      await sleep(1500 + Math.random() * 1000);
     }
 
     if (collectedForSave.length > 0) {
@@ -199,20 +168,18 @@ async function parseReviewsFromUrl(
     return {
       productName: productNameMatch,
       totalCount: totalReviewsCount,
-      reviews: allReviews.map((r, i) => ({
-        ...r,
-        url,
-        ordinal: `${i + 1}/${totalReviewsCount || allReviews.length}`,
-      })),
+      reviews: allReviews,
+      screenshots,
       logs: [...getLogBuffer()],
       errorOccurred: false,
     };
   } catch (err) {
-    errorWithCapture('❌ Ошибка при парсинге:', err.message);
+    errorWithCapture('❌ Ошибка парсинга:', err.message);
     return {
       productName: productNameMatch,
       totalCount: 0,
       reviews: [],
+      screenshots,
       logs: [...getLogBuffer()],
       errorOccurred: true,
     };

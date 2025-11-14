@@ -12,54 +12,41 @@ app.post('/parse', async (req, res) => {
   console.log('🚀 Начало парсинга:', s3InputFileUrl);
 
   try {
-    // Скачать Excel с ссылками
     const localInputPath = await downloadFromS3(s3InputFileUrl);
-
-    // Прочитать ссылки из Excel
     const urls = await readExcelLinks(localInputPath);
     const allResults = [];
 
-    // Парсинг товаров
     for (const url of urls) {
-      const result = await parseReviewsFromUrl(url, mode, (partial) => {
-        console.log(`Промежуточное сохранение: ${partial.reviews.length} отзывов`);
-      });
+      const result = await parseReviewsFromUrl(url, mode);
+
       allResults.push(result);
 
-      // Загрузка скриншотов в s3
-      const screenshots = ['/tmp/debug_hash.png', '/tmp/debug_reviews.png'];
-
-      for (const file of screenshots) {
+      // Загрузка ВСЕХ скриншотов
+      for (const screenshot of result.screenshots) {
         try {
-          if (fs.existsSync(file)) {
-            await uploadScreenshot(file);
-            console.log(`📤 Скриншот загружен в S3: ${file}`);
+          if (fs.existsSync(screenshot)) {
+            await uploadScreenshot(screenshot);
+            console.log(`📤 Загружен: ${screenshot}`);
           }
         } catch (err) {
-          console.warn(`⚠ Ошибка загрузки скриншота ${file}:`, err.message);
+          console.warn(`⚠ Ошибка загрузки ${screenshot}:`, err.message);
         }
       }
     }
 
-    // Сформировать Excel и сразу загрузить на S3
     const s3OutputUrl = await writeExcelReviews(allResults);
 
-    // Сообщить в Next.js API, что готово
     if (callbackUrl) {
-      try {
-        await fetch(callbackUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ fileUrl: s3OutputUrl }),
-        });
-      } catch (err) {
-        console.warn('⚠ Ошибка callback запроса:', err.message);
-      }
+      await fetch(callbackUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fileUrl: s3OutputUrl }),
+      });
     }
 
     res.json({ success: true, s3OutputUrl });
   } catch (err) {
-    console.error('❌ Ошибка в процессе парсинга:', err);
+    console.error('❌ Ошибка:', err);
     res.status(500).json({ success: false, error: err.message });
   }
 });
