@@ -8,8 +8,18 @@ const { logWithCapture } = require('../utils');
 
 puppeteer.use(StealthPlugin());
 
+// пул случайных user-agent (только настоящие, современные)
+const USER_AGENTS = [
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36',
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:117.0) Gecko/20100101 Firefox/117.0',
+];
+
+const randomUserAgent = () => USER_AGENTS[Math.floor(Math.random() * USER_AGENTS.length)];
+
 async function launchBrowserWithCookies() {
-  const userDataDir = path.join('/tmp', 'chrome_profile');
+  // Уникальный профиль под каждый запуск
+  const userDataDir = `/tmp/chrome_profile_${Date.now()}_${Math.random()}`;
 
   const args = [
     '--no-sandbox',
@@ -22,10 +32,10 @@ async function launchBrowserWithCookies() {
     '--lang=ru-RU,ru',
   ];
 
-  // 🌐 Проксирование (если задано в .env)
+  // Проксирование
   if (process.env.PROXY_URL) {
     args.unshift(`--proxy-server=${process.env.PROXY_URL}`);
-    logWithCapture(`🌐 Proxy enabled: ${process.env.PROXY_URL}`);
+    logWithCapture(`🌐 Proxy enabled`);
   }
 
   const browser = await puppeteer.launch({
@@ -37,25 +47,25 @@ async function launchBrowserWithCookies() {
 
   const page = await browser.newPage();
 
-  // 🔐 Авторизация на прокси (если требуется)
+  // Авторизация на прокси
   if (process.env.PROXY_USER && process.env.PROXY_PASS) {
     try {
       await page.authenticate({
         username: process.env.PROXY_USER,
         password: process.env.PROXY_PASS,
       });
-      logWithCapture('🔐 Proxy auth applied');
+      logWithCapture(`🔐 Proxy auth OK`);
     } catch (err) {
-      console.error('Proxy auth error:', err.message);
+      logWithCapture(`❌ Proxy auth failed: ${err.message}`);
     }
   }
 
-  // 🧠 Настройки браузера под “человека”
-  await page.setUserAgent(
-    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36'
-  );
+  // Человеческие настройки браузера
+  const ua = randomUserAgent();
+  await page.setUserAgent(ua);
+
   await page.setExtraHTTPHeaders({
-    'Accept-Language': 'ru-RU,ru;q=0.9,en-US;q=0.8',
+    'Accept-Language': 'ru-RU,ru;q=0.9,en;q=0.8',
   });
 
   await page.evaluateOnNewDocument(() => {
@@ -66,7 +76,7 @@ async function launchBrowserWithCookies() {
     window.chrome = { runtime: {} };
   });
 
-  // 🍪 Подключаем cookies.json
+  // Подключаем cookies.json
   const cookiesPath = path.join(__dirname, '../cookies.json');
   if (fs.existsSync(cookiesPath)) {
     try {
@@ -75,27 +85,38 @@ async function launchBrowserWithCookies() {
       const cookiesArr = Array.isArray(cookies) ? cookies : cookies.cookies;
       if (Array.isArray(cookiesArr) && cookiesArr.length > 0) {
         await page.setCookie(...cookiesArr);
-        logWithCapture(`🍪 Cookies из cookies.json (${cookiesArr.length})`);
-      } else {
-        logWithCapture('⚠️ cookies.json найден, но пуст');
+        logWithCapture(`🍪 Cookies loaded (${cookiesArr.length})`);
       }
     } catch (err) {
-      console.error('Ошибка чтения cookies.json:', err.message);
+      logWithCapture(`⚠ Cookies load error: ${err.message}`);
     }
-  } else {
-    logWithCapture('⚠️ cookies.json не найден');
   }
 
-  // 👨‍💻 Простая имитация поведения пользователя
+  // Простое человеческое поведение
   page.humanize = async () => {
     try {
-      await page.mouse.move(200 + Math.random() * 600, 300 + Math.random() * 400);
-      await page.mouse.wheel({ deltaY: 300 + Math.random() * 300 });
-      await page.waitForTimeout(500 + Math.random() * 1000);
+      await page.mouse.move(300 + Math.random() * 400, 200 + Math.random() * 300);
+      await page.waitForTimeout(500 + Math.random() * 1200);
+      await page.mouse.wheel({ deltaY: 200 + Math.random() * 300 });
     } catch {}
   };
 
-  logWithCapture('🚀 Puppeteer launched (stealth + proxy + cookies)');
+  // Проверка IP
+  try {
+    await page.goto('https://ipinfo.io/json', {
+      timeout: 15000,
+      waitUntil: 'domcontentloaded',
+    });
+
+    const ipData = await page.evaluate(() => document.body.innerText);
+    const parsed = JSON.parse(ipData);
+
+    logWithCapture(`🌍 IP: ${parsed.ip}, Country: ${parsed.country}`);
+  } catch (err) {
+    logWithCapture(`⚠ IP check failed: ${err.message}`);
+  }
+
+  logWithCapture('🚀 Puppeteer ready (stealth + proxy + cookies + random UA)');
   return { browser, page };
 }
 
