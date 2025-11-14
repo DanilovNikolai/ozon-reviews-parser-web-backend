@@ -12,6 +12,9 @@ const s3Client = new S3Client({
   },
 });
 
+/**
+ * Определяем Content-Type по расширению файла
+ */
 function detectContentType(filename) {
   const ext = filename.toLowerCase();
 
@@ -22,6 +25,14 @@ function detectContentType(filename) {
 
   return 'application/octet-stream';
 }
+
+/**
+ * Универсальная функция загрузки любого файла в S3
+ * @param {string|Buffer} file - путь или Buffer
+ * @param {string} folder - папка в корзине
+ * @param {string|null} filename - имя файла, если передаётся Buffer
+ * @returns {Promise<string>} — ссылка на загруженный файл
+ */
 
 async function uploadToS3(file, folder = 'downloaded_files', filename = null) {
   let fileContent;
@@ -52,6 +63,9 @@ async function uploadToS3(file, folder = 'downloaded_files', filename = null) {
   return `https://storage.yandexcloud.net/${process.env.YANDEX_BUCKET}/${key}`;
 }
 
+/**
+ * Скачивает файл с S3 по URL во временный путь
+ */
 async function downloadFromS3(s3FileUrl) {
   const axios = require('axios');
   const tmpPath = path.join('/tmp', path.basename(s3FileUrl));
@@ -62,6 +76,9 @@ async function downloadFromS3(s3FileUrl) {
   return tmpPath;
 }
 
+/**
+ * Ззагрузка скриншотов
+ */
 async function uploadScreenshot(localPath) {
   return uploadToS3(localPath, 'debug_screenshots');
 }

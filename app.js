@@ -19,21 +19,17 @@ app.post('/parse', async (req, res) => {
     const urls = await readExcelLinks(localInputPath);
     const allResults = [];
 
+    // Парсинг товаров
     for (const url of urls) {
       const result = await parseReviewsFromUrl(url, mode, (partial) => {
         console.log(`Промежуточное сохранение: ${partial.reviews.length} отзывов`);
       });
       allResults.push(result);
 
-      // 🔹 Файлы скриншотов, которые потенциально могли появиться
-      const screenshotFiles = [
-        '/tmp/debug_hash.png',
-        '/tmp/debug_reviews.png',
-        '/tmp/page_last.png',
-        '/tmp/page_error.png',
-      ];
+      // Загрузка скриншотов в s3
+      const screenshots = ['/tmp/debug_hash.png', '/tmp/debug_reviews.png'];
 
-      for (const file of screenshotFiles) {
+      for (const file of screenshots) {
         try {
           if (fs.existsSync(file)) {
             await uploadScreenshot(file);
