@@ -85,7 +85,7 @@ async function launchBrowserWithCookies() {
       const cookiesArr = Array.isArray(cookies) ? cookies : cookies.cookies;
       if (Array.isArray(cookiesArr) && cookiesArr.length > 0) {
         await page.setCookie(...cookiesArr);
-        logWithCapture(`🍪 Cookies loaded (${cookiesArr.length})`);
+        logWithCapture(`🍪 Cookies loaded`);
       }
     } catch (err) {
       logWithCapture(`⚠ Cookies load error: ${err.message}`);
