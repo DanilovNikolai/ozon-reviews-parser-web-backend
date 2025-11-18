@@ -1,4 +1,5 @@
 // utils/humanScroll.js
+const { sleep } = require('./sleep');
 
 async function humanScroll(page) {
   try {
@@ -6,7 +7,7 @@ async function humanScroll(page) {
 
     for (let i = 0; i < segments; i++) {
       await page.mouse.wheel({ deltaY: 200 + Math.random() * 400 });
-      await page.waitForTimeout(200 + Math.random() * 600);
+      await sleep(200 + Math.random() * 600);
     }
   } catch (err) {
     console.warn('⚠ humanScroll error:', err.message);

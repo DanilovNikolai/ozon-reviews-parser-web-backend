@@ -1,4 +1,5 @@
 // utils/humanMouse.js
+const { sleep } = require('./sleep');
 
 async function humanMouse(page) {
   try {
@@ -7,11 +8,11 @@ async function humanMouse(page) {
     const y = 200 + Math.random() * 600;
 
     await page.mouse.move(x, y, { steps });
-    await page.waitForTimeout(200 + Math.random() * 800);
+    await sleep(200 + Math.random() * 800);
 
     if (Math.random() < 0.25) {
       await page.mouse.wheel({ deltaY: 150 + Math.random() * 350 });
-      await page.waitForTimeout(300 + Math.random() * 600);
+      await sleep(300 + Math.random() * 600);
     }
   } catch (err) {
     console.warn('⚠ humanMouse error:', err.message);
