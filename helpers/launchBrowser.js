@@ -92,15 +92,6 @@ async function launchBrowserWithCookies() {
     }
   }
 
-  // Простое человеческое поведение
-  page.humanize = async () => {
-    try {
-      await page.mouse.move(300 + Math.random() * 400, 200 + Math.random() * 300);
-      await page.waitForTimeout(500 + Math.random() * 1200);
-      await page.mouse.wheel({ deltaY: 200 + Math.random() * 300 });
-    } catch {}
-  };
-
   // Проверка IP
   try {
     await page.goto('https://ipinfo.io/json', {
