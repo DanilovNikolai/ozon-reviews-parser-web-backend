@@ -130,9 +130,19 @@ async function parseReviewsFromUrl(
 
     logWithCapture(`✅ Страница загружена: ${page.url()}`);
 
+    // человеческое поведение
     await humanMouse(page);
     await humanScroll(page);
     await humanKeyboard(page);
+
+    // небольшая случайная задержка
+    await sleep(800 + Math.random() * 1200);
+
+    // в 15% случаев "человек думает"
+    if (Math.random() < 0.15) {
+      logWithCapture('⏳ Думаю как человек перед началом чтения...');
+      await sleep(2000 + Math.random() * 3000);
+    }
 
     const finalUrl = page.url();
     if (finalUrl.includes('captcha') || finalUrl.includes('antibot')) {
@@ -174,12 +184,28 @@ async function parseReviewsFromUrl(
     let hasNextPage = true;
 
     while (hasNextPage) {
+      if (hasNextPage) {
+        // имитация «посмотрел на новую страницу»
+        await sleep(500 + Math.random() * 800);
+        await humanMouse(page);
+      }
       logWithCapture(`📄 Парсим страницу #${pageIndex}`);
 
+      // поведение человека
       await humanMouse(page);
       await humanScroll(page);
+
+      // небольшая пауза
+      await sleep(300 + Math.random() * 600);
+
       await autoScroll(page);
       await humanKeyboard(page);
+
+      // 10–15% шанс "человек думает"
+      if (Math.random() < 0.15) {
+        logWithCapture('⏳ Человек задумался на странице...');
+        await sleep(3000 + Math.random() * 5000);
+      }
 
       await expandAllSpoilers(page);
       await sleep(350);
@@ -224,10 +250,15 @@ async function parseReviewsFromUrl(
         break;
       }
 
+      // имитация человека перед переходом
+      await humanMouse(page);
+      await humanScroll(page);
+
       hasNextPage = await goToNextPageByClick(page);
       pageIndex++;
 
-      await sleep(1200 + Math.random() * 600);
+      // пауза как в старом скрипте: 2–3 секунды
+      await sleep(2000 + Math.random() * 1000);
     }
 
     // последняя порция
