@@ -15,18 +15,19 @@ app.post('/parse', async (req, res) => {
     // Скачать Excel с ссылками
     const localInputPath = await downloadFromS3(s3InputFileUrl);
 
-    // Прочитать ссылки из Excel
+    // Прочитать ссылки
     const urls = await readExcelLinks(localInputPath);
     const allResults = [];
 
-    // Парсинг товаров
+    // Парсинг каждого товара
     for (const url of urls) {
       const result = await parseReviewsFromUrl(url, mode, (partial) => {
         console.log(`Промежуточное сохранение: ${partial.reviews.length} отзывов`);
       });
+
       allResults.push(result);
 
-      // Загрузка скриншотов в s3
+      // Загрузка скриншотов в S3
       const screenshots = ['/tmp/debug_hash.png', '/tmp/debug_reviews.png'];
 
       for (const file of screenshots) {
@@ -41,10 +42,10 @@ app.post('/parse', async (req, res) => {
       }
     }
 
-    // Сформировать Excel и сразу загрузить на S3
+    // Генерация итогового Excel с отзывами
     const s3OutputUrl = await writeExcelReviews(allResults);
 
-    // Сообщить в Next.js API, что готово
+    // Callback на фронт (если есть)
     if (callbackUrl) {
       try {
         await fetch(callbackUrl, {
@@ -57,18 +58,30 @@ app.post('/parse', async (req, res) => {
       }
     }
 
-    // Проверяем, была ли ошибка в одном из товаров
-    const anyError = allResults.some((r) => r.errorOccurred);
-    const firstErrorLogs = allResults.find((r) => r.errorOccurred)?.logs || null;
+    // Проверка на ошибки
+    const errorItem = allResults.find((r) => r.errorOccurred);
 
-    res.json({
-      success: !anyError,
-      error: anyError ? firstErrorLogs : null,
+    // Формируем короткое сообщение об ошибке (вместо огромного массива логов)
+    let shortError = null;
+
+    if (errorItem) {
+      const logs = errorItem.logs || [];
+      const errLine =
+        logs.find((l) => l.includes('❌')) ||
+        logs.find((l) => l.toLowerCase().includes('ошибка')) ||
+        'Произошла ошибка при парсинге';
+
+      shortError = errLine.replace(/❌/g, '').trim();
+    }
+
+    return res.json({
+      success: !errorItem,
+      error: shortError,
       s3OutputUrl,
     });
   } catch (err) {
     console.error('❌ Ошибка в процессе парсинга:', err);
-    res.status(500).json({ success: false, error: err.message });
+    return res.status(500).json({ success: false, error: err.message });
   }
 });
 
