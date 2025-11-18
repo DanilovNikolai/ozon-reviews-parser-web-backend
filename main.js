@@ -13,6 +13,10 @@ const {
   generateHashFromReviews,
 } = require('./utils');
 
+const { humanMouse } = require('./utils/humanMouse');
+const { humanScroll } = require('./utils/humanScroll');
+const { humanKeyboard } = require('./utils/humanKeyboard');
+
 const { goToNextPageByClick, launchBrowserWithCookies } = require('./helpers');
 
 async function parseReviewsFromUrl(
@@ -39,14 +43,15 @@ async function parseReviewsFromUrl(
     });
     logWithCapture('🕒 Страница для хэша загружена');
 
+    // поведение человека
+    await humanMouse(page);
+    await humanKeyboard(page);
+
     // Проверяем, не попали ли на антибот
     const currentUrl = page.url();
     if (currentUrl.includes('captcha') || currentUrl.includes('antibot')) {
       warnWithCapture(`🚨 Ozon вернул антибот страницу: ${currentUrl}`);
     }
-
-    // await page.screenshot({ path: '/tmp/debug_hash.png', fullPage: true });
-    // logWithCapture('📸 Скриншот сохранён: /tmp/debug_hash.png');
 
     // Ожидаем появления блока отзывов
     await page
@@ -110,6 +115,11 @@ async function parseReviewsFromUrl(
     });
     logWithCapture(`✅ Страница загружена: ${page.url()}`);
 
+    // человеческое поведение
+    await humanMouse(page);
+    await humanScroll(page);
+    await humanKeyboard(page);
+
     // Проверяем на антибот снова
     const finalUrl = page.url();
     if (finalUrl.includes('captcha') || finalUrl.includes('antibot')) {
@@ -121,11 +131,7 @@ async function parseReviewsFromUrl(
       .waitForSelector('[data-widget="webListReviews"]', { timeout: 20000 })
       .catch(() => warnWithCapture('⚠️ Блок отзывов не найден (timeout при парсинге)'));
 
-    // Делаем скриншот для отладки
-    await page.screenshot({ path: '/tmp/debug_reviews.png', fullPage: true });
-    logWithCapture('📸 Скриншот сохранён: /tmp/debug_reviews.png');
-
-    // Небольшая случайная задержка (Promise)
+    // Небольшая случайная задержка
     await new Promise((res) => setTimeout(res, 3000 + Math.random() * 2000));
 
     try {
@@ -137,22 +143,29 @@ async function parseReviewsFromUrl(
       }
     } catch {}
 
-    // --- 3️⃣ Цикл по страницам отзывов ---
+    // --- 3️⃣ Цикл по страницам ---
     let pageIndex = 1;
     let hasNextPage = true;
 
     while (hasNextPage) {
       logWithCapture(`📄 Парсим страницу #${pageIndex}`);
 
+      // имитация поведения
+      await humanMouse(page);
+      await humanScroll(page);
       await autoScroll(page);
-      await new Promise((res) => setTimeout(res, 500));
+      await humanKeyboard(page);
+
+      if (Math.random() < 0.15) {
+        logWithCapture('⏳ Пауза как у человека...');
+        await sleep(3000 + Math.random() * 5000);
+      }
+
       await expandAllSpoilers(page);
       await new Promise((res) => setTimeout(res, 300));
 
       if (pageIndex > CONFIG.maxPagesPerSKU) {
-        warnWithCapture(
-          `⛔ Достигнут лимит страниц (${CONFIG.maxPagesPerSKU}) в рамках одной сессии`
-        );
+        warnWithCapture(`⛔ Достигнут лимит страниц (${CONFIG.maxPagesPerSKU})`);
         break;
       }
 
@@ -180,10 +193,14 @@ async function parseReviewsFromUrl(
         collectedForSave.length = 0;
       }
 
+      // перед переходом — человек
+      await humanMouse(page);
+      await humanScroll(page);
+
       hasNextPage = await goToNextPageByClick(page);
       pageIndex++;
 
-      // случайная пауза между страницами
+      // случайная пауза
       await new Promise((res) => setTimeout(res, 2000 + Math.random() * 1000));
     }
 
