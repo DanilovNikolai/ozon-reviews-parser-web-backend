@@ -85,7 +85,7 @@ function extractReviewsFromHtml(html, mode = '1') {
 
       // === ВАЖНО: момент остановки ===
       if (mode === '3' && !comment) {
-        warnWithCapture('⛔ Пустой комментарий найден — стоп!');
+        warnWithCapture('⛔ Пустой комментарий найден');
         stopSignal = true;
         break;
       }
