@@ -204,12 +204,12 @@ async function parseReviewsFromUrl(
         return container.innerHTML;
       });
 
-      // НОВОЕ: вытаскиваем и отзывы, и stop-сигнал
+      // Вытаскиваем и отзывы, и stop-сигнал
       const { reviews, stop } = extractReviewsFromHtml(html, mode);
 
       // 1) Если совсем нет отзывов — это конец списка
       if (reviews.length === 0) {
-        warnWithCapture('⛔ Пустая страница — конец отзывов');
+        warnWithCapture('⛔ Пустая страница - отзывы закончились');
         break;
       }
 
