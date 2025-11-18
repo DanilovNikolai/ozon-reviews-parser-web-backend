@@ -142,7 +142,7 @@ async function parseReviewsFromUrl(
     await page.waitForSelector('[data-widget="webListReviews"]', { timeout: 20000 });
 
     // небольшая стабилизация DOM
-    await page.waitForTimeout(1500);
+    await sleep(1500);
 
     // 📸 СКРИНШОТ ПЕРВОЙ РЕАЛЬНОЙ СТРАНИЦЫ
     try {
@@ -241,7 +241,7 @@ async function parseReviewsFromUrl(
 
     // 📸 СКРИНШОТ ПОСЛЕДНЕЙ СТРАНИЦЫ
     try {
-      await page.waitForTimeout(1200);
+      await sleep(1200);
       await page.screenshot({ path: LAST_SCREENSHOT_PATH, fullPage: true });
       logWithCapture(`📸 Скриншот последней страницы: ${LAST_SCREENSHOT_PATH}`);
     } catch (e) {
@@ -261,7 +261,7 @@ async function parseReviewsFromUrl(
     };
   } catch (err) {
     try {
-      await page.waitForTimeout(500);
+      await sleep(500);
       await page.screenshot({ path: LAST_SCREENSHOT_PATH, fullPage: true });
       logWithCapture(`📸 Финальный скриншот при ошибке: ${LAST_SCREENSHOT_PATH}`);
     } catch {}
