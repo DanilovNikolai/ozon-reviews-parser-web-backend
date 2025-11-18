@@ -35,12 +35,12 @@ async function parseReviewsFromUrl(
   const collectedForSave = [];
   let totalReviewsCount = 0;
 
-  const FIRST_SCREENSHOT_PATH = '/tmp/debug_hash.png'; // первая спарсенная страница
-  const LAST_SCREENSHOT_PATH = '/tmp/debug_reviews.png'; // последняя спарсенная страница
+  const FIRST_SCREENSHOT_PATH = '/tmp/debug_hash.png';
+  const LAST_SCREENSHOT_PATH = '/tmp/debug_reviews.png';
   let firstScreenshotDone = false;
 
   try {
-    // --- 1️⃣ Получаем хэш — с защитой от антибота и повторными попытками ---
+    // --- 1️⃣ Загрузка страницы для хэша с повторами ---
     async function loadPageForHash(page, url, retries = 3) {
       for (let attempt = 1; attempt <= retries; attempt++) {
         logWithCapture(`🔄 Загрузка страницы для хэша (попытка ${attempt}/${retries})`);
@@ -63,20 +63,19 @@ async function parseReviewsFromUrl(
             continue;
           }
 
-          // Проверяем, есть ли блок отзывов
+          // Проверяем блок отзывов
           const selector = '[data-widget="webListReviews"]';
-
           const found = await page.$(selector);
+
           if (!found) {
-            warnWithCapture('⚠️ Блок отзывов отсутствует, возможно антибот → пробуем снова');
+            warnWithCapture('⚠️ Блок отзывов отсутствует — возможно антибот');
             await sleep(2000 + Math.random() * 3000);
             continue;
           }
 
-          // Ожидаем появление блока отзывов
+          // Ожидаем появление
           await page.waitForSelector(selector, { timeout: 15000 });
 
-          // Успех 🎉
           logWithCapture('✅ Страница для хэша успешно загружена');
           return;
         } catch (err) {
@@ -94,14 +93,16 @@ async function parseReviewsFromUrl(
     const hashUrl = getReviewsUrlWithSort(url, 'score_asc');
     await loadPageForHash(page, hashUrl);
 
+    // Получаем HTML для хэша
     const htmlForHash = await page.evaluate(() => {
       const container = document.querySelector('[data-widget="webListReviews"]') || document.body;
       return container.innerHTML;
     });
 
-    const reviewsForHash = extractReviewsFromHtml(htmlForHash, mode);
-    const hash = generateHashFromReviews(reviewsForHash);
+    const { reviews: hashReviews } = extractReviewsFromHtml(htmlForHash, mode);
+    const hash = generateHashFromReviews(hashReviews);
 
+    // Проверка дубликатов
     const existingIndex = seenHashes.findIndex((h) => h === hash);
     if (existingIndex !== -1) {
       const urlMatch = seenUrls[existingIndex];
@@ -136,6 +137,7 @@ async function parseReviewsFromUrl(
       waitUntil: ['networkidle0', 'domcontentloaded'],
       timeout: CONFIG.nextPageTimeout,
     });
+
     logWithCapture(`✅ Страница загружена: ${page.url()}`);
 
     await humanMouse(page);
@@ -149,21 +151,20 @@ async function parseReviewsFromUrl(
 
     await page.waitForSelector('[data-widget="webListReviews"]', { timeout: 20000 });
 
-    // небольшая задержка для стабильности
-    await new Promise((res) => setTimeout(res, 3000 + Math.random() * 2000));
+    await sleep(3000 + Math.random() * 2000);
 
-    // 📸 Скриншот первой спарсенной страницы
+    // 📸 Скриншот первой страницы
     try {
       if (!firstScreenshotDone) {
         await page.screenshot({ path: FIRST_SCREENSHOT_PATH, fullPage: true });
         firstScreenshotDone = true;
-        logWithCapture(`📸 Скриншот первой страницы сохранён: ${FIRST_SCREENSHOT_PATH}`);
+        logWithCapture(`📸 Скриншот первой страницы: ${FIRST_SCREENSHOT_PATH}`);
       }
     } catch (e) {
       warnWithCapture(`⚠ Не удалось сделать скриншот первой страницы: ${e.message}`);
     }
 
-    // Количество отзывов (если есть)
+    // Количество отзывов
     try {
       const titleText = await page.title();
       const titleMatch = titleText.match(/([\d \s]+)\s+отзыв/i);
@@ -186,15 +187,14 @@ async function parseReviewsFromUrl(
       await humanKeyboard(page);
 
       if (Math.random() < 0.15) {
-        logWithCapture('⏳ Пауза как у человека...');
         await sleep(3000 + Math.random() * 5000);
       }
 
       await expandAllSpoilers(page);
-      await new Promise((res) => setTimeout(res, 300));
+      await sleep(300);
 
       if (pageIndex > CONFIG.maxPagesPerSKU) {
-        warnWithCapture(`⛔ Достигнут лимит страниц (${CONFIG.maxPagesPerSKU})`);
+        warnWithCapture(`⛔ Достигнут лимит страниц: ${CONFIG.maxPagesPerSKU}`);
         break;
       }
 
@@ -205,20 +205,21 @@ async function parseReviewsFromUrl(
 
       const { reviews, stop } = extractReviewsFromHtml(html, mode);
 
-      // Добавляем hash
-      for (const review of reviews) review.hash = hashForThisProduct;
-
-      // 1) режим 3 — найден пустой комментарий
+      // 1) Если режим 3 — останавливаемся при первом пустом комментарии
       if (mode === '3' && stop) {
-        warnWithCapture('⛔ Режим 3: найден пустой комментарий');
-        allReviews.push(...reviews);
+        warnWithCapture('⛔ Остановка: найден пустой комментарий');
         break;
       }
 
-      // 2) пустая страница → конец отзывов
+      // 2) Если отзывов нет — конец отзывов
       if (reviews.length === 0) {
-        warnWithCapture('⛔ Пустая страница — окончание отзывов');
+        warnWithCapture('⛔ Конец отзывов: пустая страница');
         break;
+      }
+
+      // Добавляем hash
+      for (const review of reviews) {
+        review.hash = hashForThisProduct;
       }
 
       allReviews.push(...reviews);
@@ -226,12 +227,12 @@ async function parseReviewsFromUrl(
 
       logWithCapture(`📦 Всего собрано: ${allReviews.length}`);
 
-      // 📸 Скриншот последней успешно спарсенной страницы
+      // Скриншот последней успешной страницы
       try {
         await page.screenshot({ path: LAST_SCREENSHOT_PATH, fullPage: true });
-        logWithCapture(`📸 Скриншот страницы #${pageIndex} сохранён: ${LAST_SCREENSHOT_PATH}`);
+        logWithCapture(`📸 Скриншот страницы #${pageIndex}: ${LAST_SCREENSHOT_PATH}`);
       } catch (e) {
-        warnWithCapture(`⚠ Не удалось сделать скриншот текущей страницы: ${e.message}`);
+        warnWithCapture(`⚠ Не удалось сделать скриншот: ${e.message}`);
       }
 
       // Промежуточное сохранение
@@ -250,7 +251,7 @@ async function parseReviewsFromUrl(
       hasNextPage = await goToNextPageByClick(page);
       pageIndex++;
 
-      await new Promise((res) => setTimeout(res, 2000 + Math.random() * 1000));
+      await sleep(2000 + Math.random() * 1000);
     }
 
     // Последняя порция
@@ -262,6 +263,7 @@ async function parseReviewsFromUrl(
       });
     }
 
+    // --- Возвращаем успешный результат ---
     return {
       productName: productNameMatch,
       totalCount: totalReviewsCount,
@@ -273,12 +275,12 @@ async function parseReviewsFromUrl(
       logs: [...getLogBuffer()],
     };
   } catch (err) {
-    // Попробуем сохранить последний вид страницы
+    // Финальный скриншот при ошибке
     try {
       await page.screenshot({ path: LAST_SCREENSHOT_PATH, fullPage: true });
-      logWithCapture(`📸 Скриншот последнего состояния сохранён: ${LAST_SCREENSHOT_PATH}`);
+      logWithCapture(`📸 Финальный скриншот при ошибке: ${LAST_SCREENSHOT_PATH}`);
     } catch (e) {
-      warnWithCapture(`⚠ Не удалось сделать финальный скриншот при ошибке: ${e.message}`);
+      warnWithCapture(`⚠ Финальный скриншот недоступен: ${e.message}`);
     }
 
     errorWithCapture('❌ Ошибка при парсинге:', err.message);
