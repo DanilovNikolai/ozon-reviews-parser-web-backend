@@ -57,7 +57,15 @@ app.post('/parse', async (req, res) => {
       }
     }
 
-    res.json({ success: true, s3OutputUrl });
+    // Проверяем, была ли ошибка в одном из товаров
+    const anyError = allResults.some((r) => r.errorOccurred);
+    const firstErrorLogs = allResults.find((r) => r.errorOccurred)?.logs || null;
+
+    res.json({
+      success: !anyError,
+      error: anyError ? firstErrorLogs : null,
+      s3OutputUrl,
+    });
   } catch (err) {
     console.error('❌ Ошибка в процессе парсинга:', err);
     res.status(500).json({ success: false, error: err.message });
