@@ -26,7 +26,7 @@ app.post('/parse', async (req, res) => {
 
     // 3) Парсинг каждой ссылки
     for (const url of urls) {
-      if (errorMessage) break; // если уже была ошибка — не идём дальше
+      if (errorMessage) break;
 
       console.log(`▶ Парсинг товара: ${url}`);
 
@@ -35,12 +35,24 @@ app.post('/parse', async (req, res) => {
           console.log(`Промежуточное сохранение: ${partial.reviews.length} отзывов`);
         });
 
-        allResults.push(result);
+        allResults.push({
+          ...result,
+          error: null,
+          errorOccurred: false,
+        });
       } catch (err) {
-        // Ошибка, выброшенная внутри parseReviewsFromUrl
         console.error(`❌ Ошибка при парсинге товара ${url}:`, err.message);
+
+        allResults.push({
+          url,
+          productName: url.match(/product\/([^/]+)/)?.[1] || 'Товар',
+          reviews: [],
+          error: err.message,
+          errorOccurred: true,
+          logs: [...getLogBuffer()],
+        });
+
         errorMessage = `Ошибка при парсинге товара ${url}: ${err.message}`;
-        // прерываем цикл по товарам, но не весь обработчик
         break;
       }
     }
@@ -75,7 +87,7 @@ app.post('/parse', async (req, res) => {
     }
   }
 
-  // 6) Callback на фронт (если есть) — НЕ критичен
+  // 6) Callback на фронт (если есть)
   if (callbackUrl && s3OutputUrl) {
     try {
       await fetch(callbackUrl, {
