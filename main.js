@@ -41,7 +41,7 @@ async function parseReviewsFromUrl(
 
   try {
     // --- 1️⃣ Получаем хэш — с защитой от антибота и повторными попытками ---
-    async function loadPageForHash(page, url, retries = 4) {
+    async function loadPageForHash(page, url, retries = 3) {
       for (let attempt = 1; attempt <= retries; attempt++) {
         logWithCapture(`🔄 Загрузка страницы для хэша (попытка ${attempt}/${retries})`);
 
@@ -203,11 +203,23 @@ async function parseReviewsFromUrl(
         return container.innerHTML;
       });
 
-      const reviews = extractReviewsFromHtml(html, mode);
+      const { reviews, stop } = extractReviewsFromHtml(html, mode);
+
+      // Добавляем hash
       for (const review of reviews) review.hash = hashForThisProduct;
 
-      // Для режима 3 — остановка при пустой странице
-      if (mode === '3' && reviews.length === 0) break;
+      // 1) режим 3 — найден пустой комментарий
+      if (mode === '3' && stop) {
+        warnWithCapture('⛔ Режим 3: найден пустой комментарий');
+        allReviews.push(...reviews);
+        break;
+      }
+
+      // 2) пустая страница → конец отзывов
+      if (reviews.length === 0) {
+        warnWithCapture('⛔ Пустая страница — окончание отзывов');
+        break;
+      }
 
       allReviews.push(...reviews);
       collectedForSave.push(...reviews);
