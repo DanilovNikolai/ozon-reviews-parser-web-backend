@@ -35,26 +35,62 @@ async function parseReviewsFromUrl(
   let totalReviewsCount = 0;
 
   try {
-    // --- 1️⃣ Получаем хэш ---
-    const hashUrl = getReviewsUrlWithSort(url, 'score_asc');
-    await page.goto(hashUrl, {
-      waitUntil: ['networkidle0', 'domcontentloaded'],
-      timeout: CONFIG.nextPageTimeout,
-    });
-    logWithCapture('🕒 Страница для хэша загружена');
+    // --- 1️⃣ Получаем хэш — с защитой от антибота и повторными попытками ---
+    async function loadPageForHash(page, url, retries = 4) {
+      for (let attempt = 1; attempt <= retries; attempt++) {
+        logWithCapture(`🔄 Загрузка страницы для хэша (попытка ${attempt}/${retries})`);
 
-    await humanMouse(page);
-    await humanKeyboard(page);
+        try {
+          await page.goto(url, {
+            waitUntil: ['networkidle0', 'domcontentloaded'],
+            timeout: CONFIG.nextPageTimeout,
+          });
 
-    // Антибот?
-    const currentUrl = page.url();
-    if (currentUrl.includes('captcha') || currentUrl.includes('antibot')) {
-      throw new Error('Ozon вернул антибот страницу при загрузке хэша');
+          await humanMouse(page);
+          await humanKeyboard(page);
+
+          const currentUrl = page.url();
+
+          // Проверяем антибот
+          if (currentUrl.includes('captcha') || currentUrl.includes('antibot')) {
+            warnWithCapture('⚠️ Попали на антибот при генерации хэша');
+            await sleep(2000 + Math.random() * 3000);
+            continue;
+          }
+
+          // Проверяем, есть ли блок отзывов
+          const selector = '[data-widget="webListReviews"]';
+
+          const found = await page.$(selector);
+          if (!found) {
+            warnWithCapture('⚠️ Блок отзывов отсутствует, возможно антибот → пробуем снова');
+            await sleep(2000 + Math.random() * 3000);
+            continue;
+          }
+
+          // Ожидаем появление блока отзывов
+          await page.waitForSelector(selector, { timeout: 15000 });
+
+          // Успех 🎉
+          logWithCapture('✅ Страница для хэша успешно загружена');
+          return;
+        } catch (err) {
+          warnWithCapture(`⚠ Ошибка при загрузке страницы для хэша: ${err.message}`);
+
+          if (attempt === retries) {
+            throw new Error(`Не удалось загрузить страницу для хэша после ${retries} попыток`);
+          }
+
+          await sleep(2000 + Math.random() * 2500);
+        }
+      }
     }
 
-    // Блок отзывов
-    await page.waitForSelector('[data-widget="webListReviews"]', { timeout: 20000 });
+    // 🔹 Используем функцию вместо прямого page.goto
+    const hashUrl = getReviewsUrlWithSort(url, 'score_asc');
+    await loadPageForHash(page, hashUrl);
 
+    // Теперь можно безопасно получать HTML
     const htmlForHash = await page.evaluate(() => {
       const container = document.querySelector('[data-widget="webListReviews"]') || document.body;
       return container.innerHTML;
