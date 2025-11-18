@@ -12,22 +12,50 @@ app.post('/parse', async (req, res) => {
   console.log('🚀 Начало парсинга:', s3InputFileUrl);
 
   try {
-    // Скачать Excel с ссылками
+    // 1) Скачать Excel с S3
     const localInputPath = await downloadFromS3(s3InputFileUrl);
 
-    // Прочитать ссылки
+    // 2) Прочитать список ссылок
     const urls = await readExcelLinks(localInputPath);
     const allResults = [];
 
-    // Парсинг каждого товара
+    // 3) Парсинг каждой ссылки
     for (const url of urls) {
-      const result = await parseReviewsFromUrl(url, mode, (partial) => {
-        console.log(`Промежуточное сохранение: ${partial.reviews.length} отзывов`);
-      });
+      console.log(`▶ Парсинг товара: ${url}`);
 
-      allResults.push(result);
+      try {
+        const result = await parseReviewsFromUrl(url, mode, (partial) => {
+          console.log(`Промежуточное сохранение: ${partial.reviews.length} отзывов`);
+        });
 
-      // Загрузка скриншотов в S3
+        // Если парсер сам сообщил об ошибке через errorOccurred
+        if (result.errorOccurred) {
+          const logs = result.logs || [];
+          const errLine =
+            logs.find((l) => l.includes('❌')) ||
+            logs.find((l) => l.toLowerCase().includes('ошибка')) ||
+            'Произошла ошибка при парсинге';
+
+          const shortError = errLine.replace(/❌/g, '').trim();
+
+          return res.status(500).json({
+            success: false,
+            error: shortError,
+          });
+        }
+
+        allResults.push(result);
+      } catch (err) {
+        // Ошибка, выброшенная внутри parseReviewsFromUrl
+        console.error(`❌ Ошибка при парсинге товара ${url}:`, err.message);
+
+        return res.status(500).json({
+          success: false,
+          error: `Ошибка при парсинге ${url}: ${err.message}`,
+        });
+      }
+
+      // 4) Загрузка возможных скриншотов только если НЕ было ошибок
       const screenshots = ['/tmp/debug_hash.png', '/tmp/debug_reviews.png'];
 
       for (const file of screenshots) {
@@ -42,10 +70,10 @@ app.post('/parse', async (req, res) => {
       }
     }
 
-    // Генерация итогового Excel с отзывами
+    // 5) Генерация итогового Excel
     const s3OutputUrl = await writeExcelReviews(allResults);
 
-    // Callback на фронт (если есть)
+    // 6) Callback (если есть)
     if (callbackUrl) {
       try {
         await fetch(callbackUrl, {
@@ -58,30 +86,19 @@ app.post('/parse', async (req, res) => {
       }
     }
 
-    // Проверка на ошибки
-    const errorItem = allResults.find((r) => r.errorOccurred);
-
-    // Формируем короткое сообщение об ошибке (вместо огромного массива логов)
-    let shortError = null;
-
-    if (errorItem) {
-      const logs = errorItem.logs || [];
-      const errLine =
-        logs.find((l) => l.includes('❌')) ||
-        logs.find((l) => l.toLowerCase().includes('ошибка')) ||
-        'Произошла ошибка при парсинге';
-
-      shortError = errLine.replace(/❌/g, '').trim();
-    }
-
+    // 7) Всё успешно
     return res.json({
-      success: !errorItem,
-      error: shortError,
+      success: true,
+      error: null,
       s3OutputUrl,
     });
   } catch (err) {
-    console.error('❌ Ошибка в процессе парсинга:', err);
-    return res.status(500).json({ success: false, error: err.message });
+    // Ошибки уровня всего парсинга
+    console.error('❌ Глобальная ошибка парсинга:', err.message);
+    return res.status(500).json({
+      success: false,
+      error: err.message,
+    });
   }
 });
 

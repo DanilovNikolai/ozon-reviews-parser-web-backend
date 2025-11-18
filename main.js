@@ -35,7 +35,7 @@ async function parseReviewsFromUrl(
   let totalReviewsCount = 0;
 
   try {
-    // --- 1️⃣ Получаем хэш для проверки дубликатов ---
+    // --- 1️⃣ Получаем хэш ---
     const hashUrl = getReviewsUrlWithSort(url, 'score_asc');
     await page.goto(hashUrl, {
       waitUntil: ['networkidle0', 'domcontentloaded'],
@@ -43,20 +43,17 @@ async function parseReviewsFromUrl(
     });
     logWithCapture('🕒 Страница для хэша загружена');
 
-    // поведение человека
     await humanMouse(page);
     await humanKeyboard(page);
 
-    // Проверяем, не попали ли на антибот
+    // Антибот?
     const currentUrl = page.url();
     if (currentUrl.includes('captcha') || currentUrl.includes('antibot')) {
-      warnWithCapture(`🚨 Ozon вернул антибот страницу: ${currentUrl}`);
+      throw new Error('Ozon вернул антибот страницу при загрузке хэша');
     }
 
-    // Ожидаем появления блока отзывов
-    await page
-      .waitForSelector('[data-widget="webListReviews"]', { timeout: 20000 })
-      .catch(() => warnWithCapture('⚠️ Блок отзывов не найден (timeout при загрузке хэша)'));
+    // Блок отзывов
+    await page.waitForSelector('[data-widget="webListReviews"]', { timeout: 20000 });
 
     const htmlForHash = await page.evaluate(() => {
       const container = document.querySelector('[data-widget="webListReviews"]') || document.body;
@@ -70,6 +67,7 @@ async function parseReviewsFromUrl(
     if (existingIndex !== -1) {
       const urlMatch = seenUrls[existingIndex];
       warnWithCapture(`🔁 Найден дубликат товара. Совпадает с: ${urlMatch}`);
+
       return {
         productName: productNameMatch,
         totalCount: 0,
@@ -87,8 +85,6 @@ async function parseReviewsFromUrl(
           },
         ],
         logs: [...getLogBuffer()],
-        errorOccurred: false,
-        isDuplicate: true,
       };
     }
 
@@ -96,44 +92,27 @@ async function parseReviewsFromUrl(
     seenUrls.push(url);
     hashForThisProduct = hash;
 
-    // --- 2️⃣ Основной парсинг ---
-    const html = await page.content();
-    console.log('📏 Длина HTML:', html.length);
-    if (html.length < 100000) {
-      console.log('⚠️ Похоже, страница урезанная (антибот защита Ozon).');
-    }
-    if (html.includes('/captcha')) {
-      console.log('🚫 Ozon показывает капчу!');
-    }
-
-    const reviewsUrl = getReviewsUrl(url);
-    console.log(`🌐 Переход на страницу: ${url}`);
-
-    await page.goto(reviewsUrl, {
+    // --- 2️⃣ Основная страница ---
+    await page.goto(getReviewsUrl(url), {
       waitUntil: ['networkidle0', 'domcontentloaded'],
       timeout: CONFIG.nextPageTimeout,
     });
     logWithCapture(`✅ Страница загружена: ${page.url()}`);
 
-    // человеческое поведение
     await humanMouse(page);
     await humanScroll(page);
     await humanKeyboard(page);
 
-    // Проверяем на антибот снова
     const finalUrl = page.url();
     if (finalUrl.includes('captcha') || finalUrl.includes('antibot')) {
-      warnWithCapture(`🚨 Ozon вернул антибот страницу при парсинге: ${finalUrl}`);
+      throw new Error('Ozon вернул антибот страницу при парсинге');
     }
 
-    // Ожидаем появления блока отзывов
-    await page
-      .waitForSelector('[data-widget="webListReviews"]', { timeout: 20000 })
-      .catch(() => warnWithCapture('⚠️ Блок отзывов не найден (timeout при парсинге)'));
+    await page.waitForSelector('[data-widget="webListReviews"]', { timeout: 20000 });
 
-    // Небольшая случайная задержка
     await new Promise((res) => setTimeout(res, 3000 + Math.random() * 2000));
 
+    // Количество отзывов (если есть)
     try {
       const titleText = await page.title();
       const titleMatch = titleText.match(/([\d \s]+)\s+отзыв/i);
@@ -150,7 +129,6 @@ async function parseReviewsFromUrl(
     while (hasNextPage) {
       logWithCapture(`📄 Парсим страницу #${pageIndex}`);
 
-      // имитация поведения
       await humanMouse(page);
       await humanScroll(page);
       await autoScroll(page);
@@ -173,10 +151,11 @@ async function parseReviewsFromUrl(
         const container = document.querySelector('[data-widget="webListReviews"]') || document.body;
         return container.innerHTML;
       });
-      const reviews = extractReviewsFromHtml(html, mode);
 
+      const reviews = extractReviewsFromHtml(html, mode);
       for (const review of reviews) review.hash = hashForThisProduct;
 
+      // Для режима 3 — остановка при пустой странице
       if (mode === '3' && reviews.length === 0) break;
 
       allReviews.push(...reviews);
@@ -184,6 +163,7 @@ async function parseReviewsFromUrl(
 
       logWithCapture(`📦 Всего собрано: ${allReviews.length}`);
 
+      // Промежуточное сохранение
       if (collectedForSave.length >= CONFIG.saveInterval) {
         onPartialSave({
           productName: productNameMatch,
@@ -193,17 +173,16 @@ async function parseReviewsFromUrl(
         collectedForSave.length = 0;
       }
 
-      // перед переходом — человек
       await humanMouse(page);
       await humanScroll(page);
 
       hasNextPage = await goToNextPageByClick(page);
       pageIndex++;
 
-      // случайная пауза
       await new Promise((res) => setTimeout(res, 2000 + Math.random() * 1000));
     }
 
+    // Последняя порция
     if (collectedForSave.length > 0) {
       onPartialSave({
         productName: productNameMatch,
@@ -221,17 +200,11 @@ async function parseReviewsFromUrl(
         ordinal: `${i + 1}/${totalReviewsCount || allReviews.length}`,
       })),
       logs: [...getLogBuffer()],
-      errorOccurred: false,
     };
   } catch (err) {
+    // ❗ Здесь больше НЕ возвращаем "тихий" объект
     errorWithCapture('❌ Ошибка при парсинге:', err.message);
-    return {
-      productName: productNameMatch,
-      totalCount: 0,
-      reviews: [],
-      logs: [...getLogBuffer()],
-      errorOccurred: true,
-    };
+    throw new Error(err.message);
   } finally {
     await browser.close();
     logWithCapture('🛑 Браузер закрыт');
