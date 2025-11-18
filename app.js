@@ -4,6 +4,7 @@ const { parseReviewsFromUrl } = require('./main');
 const { downloadFromS3, uploadScreenshot } = require('./services/s3');
 const { readExcelLinks, writeExcelReviews } = require('./services/excel');
 const fs = require('fs');
+const { getLogBuffer } = require('./utils');
 
 const app = express();
 app.use(express.json({ limit: '10mb' }));
@@ -49,7 +50,7 @@ app.post('/parse', async (req, res) => {
           reviews: [],
           error: err.message,
           errorOccurred: true,
-          logs: [...getLogBuffer()],
+          logs: getLogBuffer(),
         });
 
         errorMessage = `Ошибка при парсинге товара ${url}: ${err.message}`;
