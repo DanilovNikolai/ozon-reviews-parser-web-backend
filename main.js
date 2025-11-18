@@ -1,3 +1,4 @@
+// main.js
 const { CONFIG } = require('./config');
 const { extractReviewsFromHtml } = require('./extractors/extractReviewsFromHtml');
 const {
@@ -33,6 +34,10 @@ async function parseReviewsFromUrl(
   const allReviews = [];
   const collectedForSave = [];
   let totalReviewsCount = 0;
+
+  const FIRST_SCREENSHOT_PATH = '/tmp/debug_hash.png'; // первая спарсенная страница
+  const LAST_SCREENSHOT_PATH = '/tmp/debug_reviews.png'; // последняя спарсенная страница
+  let firstScreenshotDone = false;
 
   try {
     // --- 1️⃣ Получаем хэш — с защитой от антибота и повторными попытками ---
@@ -86,11 +91,9 @@ async function parseReviewsFromUrl(
       }
     }
 
-    // 🔹 Используем функцию вместо прямого page.goto
     const hashUrl = getReviewsUrlWithSort(url, 'score_asc');
     await loadPageForHash(page, hashUrl);
 
-    // Теперь можно безопасно получать HTML
     const htmlForHash = await page.evaluate(() => {
       const container = document.querySelector('[data-widget="webListReviews"]') || document.body;
       return container.innerHTML;
@@ -146,7 +149,19 @@ async function parseReviewsFromUrl(
 
     await page.waitForSelector('[data-widget="webListReviews"]', { timeout: 20000 });
 
+    // небольшая задержка для стабильности
     await new Promise((res) => setTimeout(res, 3000 + Math.random() * 2000));
+
+    // 📸 Скриншот первой спарсенной страницы
+    try {
+      if (!firstScreenshotDone) {
+        await page.screenshot({ path: FIRST_SCREENSHOT_PATH, fullPage: true });
+        firstScreenshotDone = true;
+        logWithCapture(`📸 Скриншот первой страницы сохранён: ${FIRST_SCREENSHOT_PATH}`);
+      }
+    } catch (e) {
+      warnWithCapture(`⚠ Не удалось сделать скриншот первой страницы: ${e.message}`);
+    }
 
     // Количество отзывов (если есть)
     try {
@@ -199,6 +214,14 @@ async function parseReviewsFromUrl(
 
       logWithCapture(`📦 Всего собрано: ${allReviews.length}`);
 
+      // 📸 Скриншот последней успешно спарсенной страницы
+      try {
+        await page.screenshot({ path: LAST_SCREENSHOT_PATH, fullPage: true });
+        logWithCapture(`📸 Скриншот страницы #${pageIndex} сохранён: ${LAST_SCREENSHOT_PATH}`);
+      } catch (e) {
+        warnWithCapture(`⚠ Не удалось сделать скриншот текущей страницы: ${e.message}`);
+      }
+
       // Промежуточное сохранение
       if (collectedForSave.length >= CONFIG.saveInterval) {
         onPartialSave({
@@ -238,7 +261,14 @@ async function parseReviewsFromUrl(
       logs: [...getLogBuffer()],
     };
   } catch (err) {
-    // ❗ Здесь больше НЕ возвращаем "тихий" объект
+    // Попробуем сохранить последний вид страницы
+    try {
+      await page.screenshot({ path: LAST_SCREENSHOT_PATH, fullPage: true });
+      logWithCapture(`📸 Скриншот последнего состояния сохранён: ${LAST_SCREENSHOT_PATH}`);
+    } catch (e) {
+      warnWithCapture(`⚠ Не удалось сделать финальный скриншот при ошибке: ${e.message}`);
+    }
+
     errorWithCapture('❌ Ошибка при парсинге:', err.message);
     throw new Error(err.message);
   } finally {
