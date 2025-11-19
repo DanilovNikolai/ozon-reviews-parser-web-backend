@@ -33,7 +33,10 @@ async function goToNextPageByClick(page) {
       }
 
       logWithCapture(`🖱️ Переход на страницу: ${nextPageLink}`);
-      await page.goto(nextPageLink, { waitUntil: 'networkidle2', timeout: CONFIG.nextPageTimeout });
+      await page.goto(nextPageLink, {
+        waitUntil: 'domcontentloaded',
+        timeout: CONFIG.nextPageTimeout,
+      });
       return true;
     } else {
       warnWithCapture(`⚠ Попытка ${attempt}: кнопка "Дальше" не найдена`);
