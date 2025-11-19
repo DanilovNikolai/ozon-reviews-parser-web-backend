@@ -9,15 +9,39 @@ const { getLogBuffer } = require('./utils');
 const app = express();
 app.use(express.json({ limit: '10mb' }));
 
+// =========================
+// 🔒 ГЛОБАЛЬНАЯ БЛОКИРОВКА
+// =========================
+let isProcessing = false;
+
 app.post('/parse', async (req, res) => {
   const { s3InputFileUrl, mode, callbackUrl } = req.body;
-  console.log('🚀 Начало парсинга:', s3InputFileUrl);
+
+  console.log('🚀 Запрос на запуск парсинга:', s3InputFileUrl);
+
+  // =========================
+  // 🛑 БЛОКИРУЕМ ПОВТОРНЫЙ ЗАПУСК
+  // =========================
+  if (isProcessing) {
+    console.log('❌ Парсер уже занят — отклоняю новый запрос');
+
+    return res.json({
+      success: false,
+      error: 'Парсер уже выполняет задачу. Повторите позже.',
+      s3OutputUrl: null,
+    });
+  }
+
+  // Ставим блокировку
+  isProcessing = true;
 
   let allResults = [];
   let s3OutputUrl = null;
   let errorMessage = null;
 
   try {
+    console.log('🚀 Начало парсинга:', s3InputFileUrl);
+
     // 1) Скачать Excel с S3
     const localInputPath = await downloadFromS3(s3InputFileUrl);
 
@@ -74,7 +98,7 @@ app.post('/parse', async (req, res) => {
     }
   }
 
-  // 5) Загрузка скриншотов (первая и последняя спарсенная страница)
+  // 5) Загрузка скриншотов
   const screenshots = ['/tmp/debug_hash.png', '/tmp/debug_reviews.png'];
 
   for (const file of screenshots) {
@@ -88,7 +112,7 @@ app.post('/parse', async (req, res) => {
     }
   }
 
-  // 6) Callback на фронт (если есть)
+  // 6) Callback на фронт
   if (callbackUrl && s3OutputUrl) {
     try {
       await fetch(callbackUrl, {
@@ -101,7 +125,10 @@ app.post('/parse', async (req, res) => {
     }
   }
 
-  // 7) Отдаём ответ ВСЕГДА со статусом 200
+  // 🔓 Сбрасываем блокировку
+  isProcessing = false;
+
+  // 7) Всегда возвращаем ответ
   return res.json({
     success: !errorMessage,
     error: errorMessage,
