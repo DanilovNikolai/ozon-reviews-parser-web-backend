@@ -4,14 +4,12 @@ const { parseReviewsFromUrl } = require('./main');
 const { downloadFromS3, uploadScreenshot } = require('./services/s3');
 const { readExcelLinks, writeExcelReviews } = require('./services/excel');
 const fs = require('fs');
-const { getLogBuffer } = require('./utils');
+const { getLogBuffer, clearLogBuffer } = require('./utils');
 
 const app = express();
 app.use(express.json({ limit: '10mb' }));
 
-// =========================
-// 🔒 ГЛОБАЛЬНАЯ БЛОКИРОВКА
-// =========================
+// ГЛОБАЛЬНЫЙ ФЛАГ РАБОТЫ ПАРСЕРА
 let isProcessing = false;
 
 app.post('/parse', async (req, res) => {
@@ -19,20 +17,19 @@ app.post('/parse', async (req, res) => {
 
   console.log('🚀 Запрос на запуск парсинга:', s3InputFileUrl);
 
-  // =========================
-  // 🛑 БЛОКИРУЕМ ПОВТОРНЫЙ ЗАПУСК
-  // =========================
+  // Параллельный процесс запрещен
   if (isProcessing) {
-    console.log('❌ Парсер уже занят — отклоняю новый запрос');
+    console.log('❌ Второй запуск заблокирован (процесс уже идёт)');
 
     return res.json({
-      success: false,
-      error: 'Парсер уже выполняет задачу. Повторите позже.',
+      success: true,
+      alreadyRunning: true,
       s3OutputUrl: null,
+      error: null,
     });
   }
 
-  // Ставим блокировку
+  // Активируем блокировку
   isProcessing = true;
 
   let allResults = [];
@@ -40,16 +37,13 @@ app.post('/parse', async (req, res) => {
   let errorMessage = null;
 
   try {
-    console.log('🚀 Начало парсинга:', s3InputFileUrl);
+    console.log('🚀 Начало основного процесса парсинга:', s3InputFileUrl);
 
-    // 1) Скачать Excel с S3
     const localInputPath = await downloadFromS3(s3InputFileUrl);
-
-    // 2) Прочитать список ссылок
     const urls = await readExcelLinks(localInputPath);
     console.log(`🔗 Найдено ссылок: ${urls.length}`);
 
-    // 3) Парсинг каждой ссылки
+    // Парсинг товаров
     for (const url of urls) {
       if (errorMessage) break;
 
@@ -66,7 +60,7 @@ app.post('/parse', async (req, res) => {
           errorOccurred: false,
         });
       } catch (err) {
-        console.error(`❌ Ошибка при парсинге товара ${url}:`, err.message);
+        console.error(`❌ Ошибка парсинга товара ${url}:`, err.message);
 
         allResults.push({
           url,
@@ -82,23 +76,21 @@ app.post('/parse', async (req, res) => {
       }
     }
   } catch (err) {
-    console.error('❌ Глобальная ошибка в процессе парсинга:', err);
-    if (!errorMessage) {
-      errorMessage = err.message || 'Глобальная ошибка в процессе парсинга';
-    }
+    console.error('❌ Глобальная ошибка:', err);
+    if (!errorMessage) errorMessage = err.message;
   }
 
-  // 4) Генерация итогового Excel — ПЫТАЕМСЯ СДЕЛАТЬ ВСЕГДА
+  // Формируем Excel
   try {
     s3OutputUrl = await writeExcelReviews(allResults);
   } catch (err) {
-    console.error('❌ Ошибка при генерации итогового Excel:', err.message);
+    console.error('❌ Ошибка генерации Excel:', err.message);
     if (!errorMessage) {
-      errorMessage = `Ошибка генерации Excel: ${err.message}`;
+      errorMessage = `Ошибка Excel: ${err.message}`;
     }
   }
 
-  // 5) Загрузка скриншотов
+  // Загружаем скриншоты
   const screenshots = ['/tmp/debug_hash.png', '/tmp/debug_reviews.png'];
 
   for (const file of screenshots) {
@@ -112,7 +104,7 @@ app.post('/parse', async (req, res) => {
     }
   }
 
-  // 6) Callback на фронт
+  // Callback
   if (callbackUrl && s3OutputUrl) {
     try {
       await fetch(callbackUrl, {
@@ -121,18 +113,18 @@ app.post('/parse', async (req, res) => {
         body: JSON.stringify({ fileUrl: s3OutputUrl }),
       });
     } catch (err) {
-      console.warn('⚠ Ошибка callback запроса:', err.message);
+      console.warn('⚠ Callback error:', err.message);
     }
   }
 
-  // 🔓 Сбрасываем блокировку
+  // Снимаем блокировку
   isProcessing = false;
 
-  // 7) Всегда возвращаем ответ
   return res.json({
     success: !errorMessage,
     error: errorMessage,
     s3OutputUrl,
+    alreadyRunning: false,
   });
 });
 
