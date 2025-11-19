@@ -11,6 +11,7 @@ const {
   warnWithCapture,
   errorWithCapture,
   getLogBuffer,
+  clearLogBuffer,
   generateHashFromReviews,
 } = require('./utils');
 
@@ -302,6 +303,7 @@ async function parseReviewsFromUrl(
   } finally {
     await browser.close();
     logWithCapture('🛑 Браузер закрыт');
+    clearLogBuffer();
   }
 }
 

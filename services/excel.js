@@ -2,7 +2,7 @@
 const XLSX = require('xlsx');
 const fs = require('fs');
 const { uploadToS3 } = require('./s3');
-const { logWithCapture, getLogBuffer } = require('../utils');
+const { logWithCapture, getLogBuffer, clearLogBuffer } = require('../utils');
 
 /**
  * Читает Excel-файл со списком ссылок на товары
@@ -127,6 +127,8 @@ async function writeExcelReviews(allResults) {
 
   logWithCapture(`📤 Excel загружен на S3: ${url}`);
   logWithCapture(`📦 Уникальных отзывов добавлено: ${newRows.length}`);
+
+  clearLogBuffer();
 
   return url;
 }
