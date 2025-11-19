@@ -139,8 +139,8 @@ async function parseReviewsFromUrl(
     // небольшая случайная задержка
     await sleep(800 + Math.random() * 1200);
 
-    // в 15% случаев "человек думает"
-    if (Math.random() < 0.15) {
+    // в 20% случаев "человек думает"
+    if (Math.random() < 0.2) {
       logWithCapture('⏳ Думаю как человек перед началом чтения...');
       await sleep(2000 + Math.random() * 3000);
     }
@@ -202,8 +202,8 @@ async function parseReviewsFromUrl(
       await autoScroll(page);
       await humanKeyboard(page);
 
-      // 10–15% шанс "человек думает"
-      if (Math.random() < 0.15) {
+      // 20% шанс "человек думает"
+      if (Math.random() < 0.2) {
         logWithCapture('⏳ Человек задумался на странице...');
         await sleep(3000 + Math.random() * 5000);
       }
