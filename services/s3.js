@@ -49,7 +49,7 @@ async function uploadToS3(file, folder = 'downloaded_files', filename = null) {
   }
 
   const contentType = detectContentType(filename);
-  const key = `${folder}/${Date.now()}_${filename}`;
+  const key = `${folder}/${filename}`;
 
   await s3Client.send(
     new PutObjectCommand({

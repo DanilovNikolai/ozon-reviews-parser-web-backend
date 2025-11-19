@@ -121,13 +121,21 @@ async function writeExcelReviews(allResults) {
   // ------ пишем файл в буфер ------
   const buffer = XLSX.write(wb, { bookType: 'xlsx', type: 'buffer' });
 
+  // ====== ФОРМИРОВАНИЕ ИМЕНИ ФАЙЛА ======
+  const timestamp = Date.now();
+  let filename = `result_${timestamp}.xlsx`;
+
+  if (hasError) {
+    filename = `result_${timestamp}_ОШИБКА.xlsx`;
+  }
+
   // ------ загрузка на S3 ------
-  const filename = `ozon_reviews_${Date.now()}.xlsx`;
   const url = await uploadToS3(buffer, 'downloaded_files', filename);
 
   logWithCapture(`📤 Excel загружен на S3: ${url}`);
   logWithCapture(`📦 Уникальных отзывов добавлено: ${newRows.length}`);
 
+  // очищаем логи для следующего SKU
   clearLogBuffer();
 
   return url;
