@@ -303,7 +303,6 @@ async function parseReviewsFromUrl(
   } finally {
     await browser.close();
     logWithCapture('🛑 Браузер закрыт');
-    clearLogBuffer();
   }
 }
 
