@@ -4,12 +4,11 @@ const { parseReviewsFromUrl } = require('./main');
 const { downloadFromS3, uploadScreenshot } = require('./services/s3');
 const { readExcelLinks, writeExcelReviews } = require('./services/excel');
 const fs = require('fs');
-const { getLogBuffer, clearLogBuffer } = require('./utils');
+const { getLogBuffer } = require('./utils');
 
 const app = express();
 app.use(express.json({ limit: '10mb' }));
 
-// ГЛОБАЛЬНЫЙ ФЛАГ РАБОТЫ ПАРСЕРА
 let isProcessing = false;
 
 app.post('/parse', async (req, res) => {
@@ -17,19 +16,15 @@ app.post('/parse', async (req, res) => {
 
   console.log('🚀 Запрос на запуск парсинга:', s3InputFileUrl);
 
-  // Параллельный процесс запрещен
+  // Если процесс уже идёт
   if (isProcessing) {
-    console.log('❌ Второй запуск заблокирован (процесс уже идёт)');
+    console.log('❌ Второй процесс отклонён — парсер уже работает.');
 
-    return res.json({
-      success: true,
-      alreadyRunning: true,
-      s3OutputUrl: null,
-      error: null,
-    });
+    // Ничего не отправляем на фронтенд, просто закрываем процесс
+    return res.status(204).end();
   }
 
-  // Активируем блокировку
+  // Блокируем возможность параллельного запуска
   isProcessing = true;
 
   let allResults = [];
@@ -37,9 +32,10 @@ app.post('/parse', async (req, res) => {
   let errorMessage = null;
 
   try {
-    console.log('🚀 Начало основного процесса парсинга:', s3InputFileUrl);
+    console.log('🚀 Основной процесс парсинга начат:', s3InputFileUrl);
 
     const localInputPath = await downloadFromS3(s3InputFileUrl);
+
     const urls = await readExcelLinks(localInputPath);
     console.log(`🔗 Найдено ссылок: ${urls.length}`);
 
@@ -60,7 +56,7 @@ app.post('/parse', async (req, res) => {
           errorOccurred: false,
         });
       } catch (err) {
-        console.error(`❌ Ошибка парсинга товара ${url}:`, err.message);
+        console.error(`❌ Ошибка при парсинге товара ${url}:`, err.message);
 
         allResults.push({
           url,
@@ -77,10 +73,12 @@ app.post('/parse', async (req, res) => {
     }
   } catch (err) {
     console.error('❌ Глобальная ошибка:', err);
-    if (!errorMessage) errorMessage = err.message;
+    if (!errorMessage) {
+      errorMessage = err.message || 'Глобальная ошибка в процессе парсинга';
+    }
   }
 
-  // Формируем Excel
+  // Генерация Excel
   try {
     s3OutputUrl = await writeExcelReviews(allResults);
   } catch (err) {
@@ -90,7 +88,7 @@ app.post('/parse', async (req, res) => {
     }
   }
 
-  // Загружаем скриншоты
+  // Загрузка скриншотов
   const screenshots = ['/tmp/debug_hash.png', '/tmp/debug_reviews.png'];
 
   for (const file of screenshots) {
@@ -104,7 +102,7 @@ app.post('/parse', async (req, res) => {
     }
   }
 
-  // Callback
+  // Callback на фронтенд
   if (callbackUrl && s3OutputUrl) {
     try {
       await fetch(callbackUrl, {
@@ -113,18 +111,18 @@ app.post('/parse', async (req, res) => {
         body: JSON.stringify({ fileUrl: s3OutputUrl }),
       });
     } catch (err) {
-      console.warn('⚠ Callback error:', err.message);
+      console.warn('⚠ Ошибка callback запроса:', err.message);
     }
   }
 
   // Снимаем блокировку
   isProcessing = false;
 
+  // Возврат результата UI
   return res.json({
     success: !errorMessage,
     error: errorMessage,
     s3OutputUrl,
-    alreadyRunning: false,
   });
 });
 
