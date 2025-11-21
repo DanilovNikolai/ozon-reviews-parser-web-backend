@@ -11,7 +11,6 @@ const {
   warnWithCapture,
   errorWithCapture,
   getLogBuffer,
-  clearLogBuffer,
   generateHashFromReviews,
 } = require('./utils');
 
