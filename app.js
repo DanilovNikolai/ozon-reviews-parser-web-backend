@@ -41,7 +41,7 @@ async function runJob(jobId, { s3InputFileUrl, mode }) {
     job.status = 'parsing';
     job.updatedAt = Date.now();
 
-    logWithCapture(`🔗 [Процесс #${jobId}] Найдено ссылок: ${urls.length}`);
+    logWithCapture(`🔗 [Процесс ${jobId}] Найдено ссылок: ${urls.length}`);
 
     // 3) Парсинг каждой ссылки
     for (const url of urls) {
@@ -56,7 +56,7 @@ async function runJob(jobId, { s3InputFileUrl, mode }) {
       job.collectedReviews = 0;
       job.updatedAt = Date.now();
 
-      logWithCapture(`▶ [Процесс #${jobId}] Парсинг товара: ${url}`);
+      logWithCapture(`▶ [Процесс ${jobId}] Парсинг товара: ${url}`);
 
       try {
         const result = await parseReviewsFromUrl(
@@ -69,7 +69,7 @@ async function runJob(jobId, { s3InputFileUrl, mode }) {
             job.updatedAt = Date.now();
 
             logWithCapture(
-              `[Процесс #${jobId}] Промежуточное сохранение: ${partial.reviews.length} отзывов`
+              `[Процесс ${jobId}] Промежуточное сохранение: ${partial.reviews.length} отзывов`
             );
           },
 
@@ -84,7 +84,7 @@ async function runJob(jobId, { s3InputFileUrl, mode }) {
         });
       } catch (err) {
         errorWithCapture(
-          `❌ [Процесс #${jobId}] Ошибка при парсинге товара ${url}: ${err.message}`
+          `❌ [Процесс ${jobId}] Ошибка при парсинге товара ${url}: ${err.message}`
         );
 
         allResults.push({
@@ -104,7 +104,7 @@ async function runJob(jobId, { s3InputFileUrl, mode }) {
       }
     }
   } catch (err) {
-    errorWithCapture(`❌ [Процесс #${jobId}] Глобальная ошибка: ${err}`);
+    errorWithCapture(`❌ [Процесс ${jobId}] Глобальная ошибка: ${err}`);
     if (!errorMessage) errorMessage = err.message;
   }
 
@@ -123,7 +123,7 @@ async function runJob(jobId, { s3InputFileUrl, mode }) {
     try {
       if (fs.existsSync(file)) {
         await uploadScreenshot(file);
-        logWithCapture(`[Процесс #${jobId}] 📤 Скриншот загружен: ${file}`);
+        logWithCapture(`[Процесс ${jobId}] 📤 Скриншот загружен: ${file}`);
       }
     } catch (err) {}
   }
@@ -134,7 +134,7 @@ async function runJob(jobId, { s3InputFileUrl, mode }) {
   job.status = errorMessage ? 'error' : 'completed';
   job.updatedAt = Date.now();
 
-  logWithCapture(`✔ [Процесс #${jobId}] Завершено: ${job.status}`);
+  logWithCapture(`✔ [Процесс ${jobId}] Завершено: ${job.status}`);
 }
 
 // ====== API ======
