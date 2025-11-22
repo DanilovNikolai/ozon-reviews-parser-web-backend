@@ -22,9 +22,7 @@ const { humanKeyboard } = require('./utils/humanKeyboard');
 
 const { goToNextPageByClick, launchBrowserWithCookies } = require('./helpers');
 
-/**
- * Безопасный evaluate с таймаутом
- */
+// Безопасный evaluate с таймаутом
 async function safeEvaluate(page, fn, timeout = 15000) {
   return Promise.race([
     page.evaluate(fn),
@@ -34,27 +32,25 @@ async function safeEvaluate(page, fn, timeout = 15000) {
   ]);
 }
 
-async function parseReviewsFromUrl(
-  url,
-  mode = '3',
-  onPartialSave = () => {},
-  seenHashes = [],
-  seenUrls = []
-) {
+// Основная функция парсинга
+async function parseReviewsFromUrl(url, mode = '3', onPartialSave = () => {}, jobRef = null) {
   const { browser, page } = await launchBrowserWithCookies();
   const productNameMatch = url.match(/product\/([^/]+)/)?.[1] || 'Товар';
+
   let hashForThisProduct = '';
   const allReviews = [];
   const collectedForSave = [];
+
   let totalReviewsCount = 0;
+  let pageIndex = 1;
+  let firstScreenshotDone = false;
 
   const FIRST_SCREENSHOT_PATH = '/tmp/debug_hash.png';
   const LAST_SCREENSHOT_PATH = '/tmp/debug_reviews.png';
-  let firstScreenshotDone = false;
 
   try {
     // ============================================================
-    // 1️⃣ Загрузка страницы для хэша с повторами
+    // Загрузка страницы для ХЭША
     // ============================================================
     async function loadPageForHash(page, url, retries = 3) {
       for (let attempt = 1; attempt <= retries; attempt++) {
@@ -67,16 +63,14 @@ async function parseReviewsFromUrl(
           });
 
           const currentUrl = page.url();
-
           if (currentUrl.includes('captcha') || currentUrl.includes('antibot')) {
-            warnWithCapture('⚠️ Попали на антибот при генерации хэша, пробуем снова…');
+            warnWithCapture('⚠️ Попали на антибот при генерации хэша');
             await sleep(2000 + Math.random() * 3000);
             continue;
           }
 
           const selector = '[data-widget="webListReviews"]';
-          const found = await page.$(selector);
-          if (!found) {
+          if (!(await page.$(selector))) {
             warnWithCapture('⚠️ Нет блока отзывов — возможно антибот');
             await sleep(2000 + Math.random() * 3000);
             continue;
@@ -84,12 +78,12 @@ async function parseReviewsFromUrl(
 
           await page.waitForSelector(selector, { timeout: 15000 });
 
-          logWithCapture('✅ Страница для хэша успешно загружена');
+          logWithCapture('✅ Страница для хэша загружена');
           return;
         } catch (err) {
-          warnWithCapture(`⚠ Ошибка при загрузке страницы для хэша: ${err.message}`);
+          warnWithCapture(`⚠ Ошибка при загрузке хэша: ${err.message}`);
           if (attempt === retries) {
-            throw new Error(`Не удалось загрузить страницу для хэша после ${retries} попыток`);
+            throw new Error(`Не удалось загрузить страницу для хэша`);
           }
           await sleep(2000 + Math.random() * 2500);
         }
@@ -110,35 +104,10 @@ async function parseReviewsFromUrl(
 
     const { reviews: hashReviews } = extractReviewsFromHtml(htmlForHash, mode);
     const hash = generateHashFromReviews(hashReviews);
-
-    const existingIndex = seenHashes.findIndex((h) => h === hash);
-    if (existingIndex !== -1) {
-      return {
-        productName: productNameMatch,
-        totalCount: 0,
-        reviews: [
-          {
-            url,
-            product: 'ДУБЛИКАТ ТОВАРА',
-            comment: '',
-            rating: '',
-            date: '',
-            user: '',
-            ordinal: '',
-            hash,
-            urlMatch: seenUrls[existingIndex],
-          },
-        ],
-        logs: [...getLogBuffer()],
-      };
-    }
-
-    seenHashes.push(hash);
-    seenUrls.push(url);
     hashForThisProduct = hash;
 
     // ============================================================
-    // 2️⃣ Основная страница отзывов
+    // Основная страница отзывов
     // ============================================================
     await page.goto(getReviewsUrl(url), {
       waitUntil: ['networkidle0', 'domcontentloaded'],
@@ -147,31 +116,26 @@ async function parseReviewsFromUrl(
 
     logWithCapture(`✅ Страница загружена: ${page.url()}`);
 
-    // человеческое поведение
     await humanMouse(page);
     await humanScroll(page);
     await humanKeyboard(page);
 
-    // небольшая случайная задержка
     await sleep(800 + Math.random() * 1200);
 
-    // в 20% случаев "человек думает"
     if (Math.random() < 0.2) {
-      logWithCapture('⏳ Думаю как человек перед началом чтения...');
+      logWithCapture('⏳ Думаю как человек перед чтением...');
       await sleep(2000 + Math.random() * 3000);
     }
 
-    const finalUrl = page.url();
-    if (finalUrl.includes('captcha') || finalUrl.includes('antibot')) {
-      throw new Error('Ozon вернул антибот страницу при парсинге');
+    if (page.url().includes('captcha') || page.url().includes('antibot')) {
+      throw new Error('Ozon вернул антибот страницу на основной странице');
     }
 
     await page.waitForSelector('[data-widget="webListReviews"]', { timeout: 20000 });
 
-    // небольшая стабилизация DOM
     await sleep(1500);
 
-    // 📸 СКРИНШОТ ПЕРВОЙ РЕАЛЬНОЙ СТРАНИЦЫ
+    // Скриншот первой страницы
     try {
       if (!firstScreenshotDone) {
         await page.screenshot({ path: FIRST_SCREENSHOT_PATH, fullPage: true });
@@ -179,11 +143,11 @@ async function parseReviewsFromUrl(
         logWithCapture(`📸 Скриншот первой страницы: ${FIRST_SCREENSHOT_PATH}`);
       }
     } catch (e) {
-      warnWithCapture(`⚠ Не удалось сделать скриншот первой страницы: ${e.message}`);
+      warnWithCapture(`⚠ Ошибка скриншота первой страницы: ${e.message}`);
     }
 
     // ============================================================
-    // Количество отзывов
+    // Подсчёт общего количества отзывов
     // ============================================================
     try {
       const titleText = await page.title();
@@ -193,36 +157,34 @@ async function parseReviewsFromUrl(
         logWithCapture(`📊 Отзывов всего: ${totalReviewsCount}`);
       }
     } catch {
-      warnWithCapture('⚠️ Не удалось определить количество отзывов по заголовку');
+      warnWithCapture('⚠ Не удалось определить количество отзывов по заголовку');
     }
 
     // ============================================================
-    // 3️⃣ Цикл по страницам
+    // Основной цикл по страницам
     // ============================================================
-    let pageIndex = 1;
     let hasNextPage = true;
+    let collectedTotal = 0;
 
     while (hasNextPage) {
-      if (hasNextPage) {
-        // имитация «посмотрел на новую страницу»
-        await sleep(500 + Math.random() * 800);
-        await humanMouse(page);
+      // Обновление статуса для фронта
+      if (jobRef) {
+        jobRef.currentPage = pageIndex;
+        jobRef.updatedAt = Date.now();
       }
+
       logWithCapture(`📄 Парсим страницу #${pageIndex}`);
 
-      // поведение человека
       await humanMouse(page);
       await humanScroll(page);
 
-      // небольшая пауза
       await sleep(300 + Math.random() * 600);
 
       await autoScroll(page);
       await humanKeyboard(page);
 
-      // 20% шанс "человек думает"
       if (Math.random() < 0.2) {
-        logWithCapture('⏳ Человек задумался на странице...');
+        logWithCapture('⏳ Человек задумался...');
         await sleep(3000 + Math.random() * 5000);
       }
 
@@ -230,7 +192,7 @@ async function parseReviewsFromUrl(
       await sleep(350);
 
       if (pageIndex > CONFIG.maxPagesPerSKU) {
-        warnWithCapture(`⛔ Достигнут лимит страниц: ${CONFIG.maxPagesPerSKU}`);
+        warnWithCapture(`⛔ Лимит страниц: ${CONFIG.maxPagesPerSKU}`);
         break;
       }
 
@@ -242,44 +204,50 @@ async function parseReviewsFromUrl(
       const { reviews, stop } = extractReviewsFromHtml(html, mode);
 
       if (reviews.length === 0) {
-        warnWithCapture('⛔ Пустая страница — отзывы закончились');
+        warnWithCapture('⛔ Пустая страница — отзывы кончились');
         break;
       }
 
-      // сохраняем ВСЁ со страницы
+      // Привязываем хэш
       for (const r of reviews) r.hash = hashForThisProduct;
+
       allReviews.push(...reviews);
       collectedForSave.push(...reviews);
+      collectedTotal += reviews.length;
+
+      // Обновление прогресса отзывов в задаче
+      if (jobRef) {
+        jobRef.collectedReviews = collectedTotal;
+        jobRef.updatedAt = Date.now();
+      }
+
       logWithCapture(`📦 Всего собрано: ${allReviews.length}`);
 
-      // Промежуточное сохранение
       if (collectedForSave.length >= CONFIG.saveInterval) {
         onPartialSave({
           productName: productNameMatch,
           totalCount: totalReviewsCount,
           reviews: [...collectedForSave],
         });
+
         collectedForSave.length = 0;
       }
 
-      // Режим 3 — стоп после сохранения страницы
       if (mode === '3' && stop) {
-        warnWithCapture('⛔ Режим 3: найден пустой комментарий');
+        warnWithCapture('⛔ Режим 3: пустой комментарий, стоп');
         break;
       }
 
-      // имитация человека перед переходом
       await humanMouse(page);
       await humanScroll(page);
 
       hasNextPage = await goToNextPageByClick(page);
       pageIndex++;
 
-      // пауза как в старом скрипте: 2–3 секунды
       await sleep(2000 + Math.random() * 1000);
     }
 
-    // последняя порция
+    // Остаток
     if (collectedForSave.length > 0) {
       onPartialSave({
         productName: productNameMatch,
@@ -288,16 +256,15 @@ async function parseReviewsFromUrl(
       });
     }
 
-    // 📸 СКРИНШОТ ПОСЛЕДНЕЙ СТРАНИЦЫ
+    // Скриншот последней страницы
     try {
-      await sleep(1200);
+      await sleep(1000);
       await page.screenshot({ path: LAST_SCREENSHOT_PATH, fullPage: true });
       logWithCapture(`📸 Скриншот последней страницы: ${LAST_SCREENSHOT_PATH}`);
     } catch (e) {
-      warnWithCapture(`⚠ Не удалось сделать скриншот последней страницы: ${e.message}`);
+      warnWithCapture(`⚠ Ошибка скриншота последней: ${e.message}`);
     }
 
-    // УСПЕШНО
     return {
       productName: productNameMatch,
       totalCount: totalReviewsCount,
@@ -312,29 +279,24 @@ async function parseReviewsFromUrl(
     try {
       await sleep(500);
       await page.screenshot({ path: LAST_SCREENSHOT_PATH, fullPage: true });
-      logWithCapture(`📸 Финальный скриншот при ошибке: ${LAST_SCREENSHOT_PATH}`);
     } catch {}
 
     errorWithCapture('❌ Ошибка при парсинге:', err.message);
     throw new Error(err.message);
   } finally {
+    // Обновляем куки
     try {
-      // Обновляем куки
-      try {
-        const cookies = await page.cookies();
-        fs.writeFileSync(path.join(__dirname, 'cookies.json'), JSON.stringify(cookies, null, 2));
-        logWithCapture(`💾 Cookies updated (${cookies.length})`);
-      } catch (err) {
-        logWithCapture(`⚠ Failed to update cookies: ${err.message}`);
-      }
+      const cookies = await page.cookies();
+      fs.writeFileSync(path.join(__dirname, 'cookies.json'), JSON.stringify(cookies, null, 2));
+      logWithCapture(`💾 Cookies updated (${cookies.length})`);
+    } catch (err) {
+      logWithCapture(`⚠ Ошибка обновления cookies: ${err.message}`);
+    }
 
-      // Закрываем браузер
+    try {
       await browser.close();
       logWithCapture('🛑 Браузер закрыт');
-    } catch (err) {
-      warnWithCapture(
-        '⚠️ Не удалось корректно закрыть браузер — выполняем принудительное завершение'
-      );
+    } catch {
       const browserProcess = browser.process();
       if (browserProcess) browserProcess.kill('SIGKILL');
     }

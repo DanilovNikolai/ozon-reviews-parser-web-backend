@@ -10,14 +10,14 @@ const app = express();
 app.use(express.json({ limit: '10mb' }));
 
 // ===== ХРАНИЛИЩЕ ЗАДАЧ =====
-const jobs = {}; // jobId -> { status, error, s3OutputUrl, progress, ... }
+const jobs = {}; // jobId -> { ... }
 
 function createJobId() {
   return Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 }
 
 /**
- * Фоновое выполнение задачи парсинга
+ * Фоновое выполнение задачи
  */
 async function runJob(jobId, { s3InputFileUrl, mode }) {
   const job = jobs[jobId];
@@ -51,14 +51,31 @@ async function runJob(jobId, { s3InputFileUrl, mode }) {
         return;
       }
 
+      job.currentUrl = url;
+      job.currentPage = 0;
+      job.collectedReviews = 0;
+      job.updatedAt = Date.now();
+
       logWithCapture(`▶ [Процесс #${jobId}] Парсинг товара: ${url}`);
 
       try {
-        const result = await parseReviewsFromUrl(url, mode, (partial) => {
-          logWithCapture(
-            `[Процесс #${jobId}] Промежуточное сохранение: ${partial.reviews.length} отзывов`
-          );
-        });
+        const result = await parseReviewsFromUrl(
+          url,
+          mode,
+
+          // Частичное сохранение → обновляем collectedReviews
+          (partial) => {
+            job.collectedReviews += partial.reviews.length;
+            job.updatedAt = Date.now();
+
+            logWithCapture(
+              `[Процесс #${jobId}] Промежуточное сохранение: ${partial.reviews.length} отзывов`
+            );
+          },
+
+          // Передаём job внутрь main.js, чтобы обновлять currentPage
+          job
+        );
 
         allResults.push({
           ...result,
@@ -88,58 +105,44 @@ async function runJob(jobId, { s3InputFileUrl, mode }) {
     }
   } catch (err) {
     errorWithCapture(`❌ [Процесс #${jobId}] Глобальная ошибка: ${err}`);
-    if (!errorMessage) {
-      errorMessage = err.message || 'Глобальная ошибка в процессе# парсинга';
-    }
+    if (!errorMessage) errorMessage = err.message;
   }
 
-  // 4) Генерация итогового Excel (пытаемся ВСЕГДА)
+  // 4) Итоговый Excel
   try {
     s3OutputUrl = await writeExcelReviews(allResults);
   } catch (err) {
-    errorWithCapture(`❌ [Процесс #${jobId}] Ошибка при генерации итогового Excel: ${err.message}`);
-    if (!errorMessage) {
-      errorMessage = `Ошибка генерации Excel: ${err.message}`;
-    }
+    errorWithCapture(`❌ Ошибка генерации Excel: ${err.message}`);
+    if (!errorMessage) errorMessage = err.message;
   }
 
-  // 5) Загрузка скриншотов
+  // 5) Скриншоты
   const screenshots = ['/tmp/debug_hash.png', '/tmp/debug_reviews.png'];
 
   for (const file of screenshots) {
     try {
       if (fs.existsSync(file)) {
         await uploadScreenshot(file);
-        logWithCapture(`[Процесс #${jobId}] 📤 Скриншот загружен в S3: ${file}`);
+        logWithCapture(`[Процесс #${jobId}] 📤 Скриншот загружен: ${file}`);
       }
-    } catch (err) {
-      warnWithCapture(`[Процесс #${jobId}] ⚠ Ошибка загрузки скриншота ${file}: ${err.message}`);
-    }
+    } catch (err) {}
   }
 
-  // 6) Обновляем job
+  // 6) Готово
   job.s3OutputUrl = s3OutputUrl || null;
   job.error = errorMessage || null;
   job.status = errorMessage ? 'error' : 'completed';
   job.updatedAt = Date.now();
 
-  logWithCapture(`[Процесс #${jobId}] Завершено со статусом: ${job.status}, error = ${job.error}`);
+  logWithCapture(`✔ [Процесс #${jobId}] Завершено: ${job.status}`);
 }
 
-// ========== API ==========
+// ====== API ======
 
-/**
- * Старт задачи парсинга.
- * Возвращает ТОЛЬКО jobId, сам парсинг идёт фоном.
- */
 app.post('/parse', async (req, res) => {
   const { s3InputFileUrl, mode } = req.body;
-
   if (!s3InputFileUrl) {
-    return res.status(400).json({
-      success: false,
-      error: 'Не передан s3InputFileUrl',
-    });
+    return res.status(400).json({ success: false, error: 'Не передан s3InputFileUrl' });
   }
 
   const jobId = createJobId();
@@ -154,85 +157,37 @@ app.post('/parse', async (req, res) => {
     mode: mode || '3',
     createdAt: now,
     updatedAt: now,
+
     totalUrls: 0,
     processedUrls: 0,
+
+    currentUrl: null,
+    currentPage: 0,
+    collectedReviews: 0,
+
     cancelRequested: false,
   };
 
-  logWithCapture(`🧩 Создана задача jobId=${jobId} для файла ${s3InputFileUrl}`);
+  logWithCapture(`🧩 Создана задача ${jobId}`);
 
-  // Запускаем фоном
   (async () => {
-    try {
-      await runJob(jobId, { s3InputFileUrl, mode });
-    } catch (error) {
-      errorWithCapture(`❌ [Процесс #${jobId}] Необработанная ошибка: ${error}`);
-      const job = jobs[jobId];
-      if (job) {
-        job.status = 'error';
-        job.error = e.message || 'Неизвестная ошибка в задаче';
-        job.updatedAt = Date.now();
-      }
-    }
+    await runJob(jobId, { s3InputFileUrl, mode });
   })();
 
-  return res.json({
-    success: true,
-    jobId,
-  });
+  return res.json({ success: true, jobId });
 });
 
-/**
- * Получение статуса задачи
- */
 app.get('/parse/:jobId/status', (req, res) => {
-  const { jobId } = req.params;
-  const job = jobs[jobId];
+  const job = jobs[req.params.jobId];
 
-  if (!job) {
-    return res.status(404).json({
-      success: false,
-      error: 'Задача не найдена',
-    });
-  }
+  if (!job) return res.status(404).json({ success: false, error: 'Задача не найдена' });
 
   return res.json({
     success: true,
-    jobId,
-    status: job.status,
-    error: job.error,
-    s3OutputUrl: job.s3OutputUrl,
-    totalUrls: job.totalUrls,
-    processedUrls: job.processedUrls,
-    createdAt: job.createdAt,
-    updatedAt: job.updatedAt,
+    ...job,
   });
 });
-
-/**
- * (Опционально) Отмена задачи
- */
-app.post('/parse/:jobId/cancel', (req, res) => {
-  const { jobId } = req.params;
-  const job = jobs[jobId];
-  if (!job) {
-    return res.status(404).json({
-      success: false,
-      error: 'Задача не найдена',
-    });
-  }
-
-  job.cancelRequested = true;
-  job.updatedAt = Date.now();
-
-  return res.json({
-    success: true,
-    message: 'Отмена запрошена',
-  });
-});
-
-app.get('/health', (req, res) => res.json({ ok: true }));
 
 app.listen(process.env.PORT || 8080, () => {
-  logWithCapture('🟢 Parser service running on port 8080');
+  logWithCapture(`🟢 Parser started`);
 });
