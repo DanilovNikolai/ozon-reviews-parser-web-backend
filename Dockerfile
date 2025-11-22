@@ -1,30 +1,26 @@
 # Node LTS
 FROM node:20-slim
 
-# 1) Системные зависимости для Chrome/Puppeteer + Xvfb для headful-режима
+# 1) deps for Chromium + Xvfb
 RUN apt-get update && apt-get install -y \
     xvfb xauth \
     ca-certificates curl gnupg fonts-liberation \
     libx11-xcb1 libxcomposite1 libxcursor1 libxdamage1 libxext6 libxi6 libxtst6 \
     libnss3 libxrandr2 libasound2 libatk1.0-0 libcups2 libdrm2 libgbm1 \
-    libpango-1.0-0 libpangocairo-1.0-0 libgtk-3-0 libxss1 lsb-release xdg-utils \
- && rm -rf /var/lib/apt/lists/*
+    libpango-1.0-0 libpangocairo-1.0-0 libgtk-3-0 libxss1 xdg-utils \
+    && rm -rf /var/lib/apt/lists/*
 
-# 2) Рабочая директория
 WORKDIR /app
 
-# 3) Устанавливаем зависимости
 COPY package*.json ./
 RUN npm install
 
-# 4) Копируем исходники
 COPY . .
 
-# 5) Создаём папку для Chrome профиля
+# создаём постоянный профиль chromium
 RUN mkdir -p /app/chrome-data
 
-# 6) Экспорт порта
 EXPOSE 8080
 
-# 7) Запуск через Xvfb
-CMD ["bash", "-lc", "xvfb-run -a -s '-screen 0 1920x1080x24' node app.js"]
+# ВАЖНО: Node становится PID1 → docker logs работает
+CMD ["bash", "-lc", "Xvfb :99 -screen 0 1920x1080x24 & export DISPLAY=:99 && node app.js"]
