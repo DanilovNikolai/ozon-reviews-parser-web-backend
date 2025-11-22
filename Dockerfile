@@ -13,20 +13,18 @@ RUN apt-get update && apt-get install -y \
 # 2) Рабочая директория
 WORKDIR /app
 
-# 3) Устанавливаем зависимости проекта (puppeteer подтянет Chromium)
+# 3) Устанавливаем зависимости
 COPY package*.json ./
 RUN npm install
 
 # 4) Копируем исходники
 COPY . .
 
-# 5) Экспорт порта
-EXPOSE 8080
-
-# 5.1) Persistent Chrome profile
+# 5) Создаём папку для Chrome профиля
 RUN mkdir -p /app/chrome-data
 
-# 6) Запуск через Xvfb (виртуальный дисплей :99), чтобы headless:false работал
-#   -screen 0 1920x1080x24 — создаём экран 1920x1080, глубина 24
-CMD bash -lc "xvfb-run -a -s \"-screen 0 1920x1080x24\" node app.js"
+# 6) Экспорт порта
+EXPOSE 8080
 
+# 7) Запуск через Xvfb
+CMD ["bash", "-lc", "xvfb-run -a -s '-screen 0 1920x1080x24' node app.js"]
