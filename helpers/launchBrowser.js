@@ -4,11 +4,11 @@ const path = require('path');
 const puppeteer = require('puppeteer-extra');
 const StealthPlugin = require('puppeteer-extra-plugin-stealth');
 const { CONFIG } = require('../config');
-const { logWithCapture } = require('../utils');
+const { logWithCapture, warnWithCapture } = require('../utils');
 
 puppeteer.use(StealthPlugin());
 
-// пул случайных user-agent (только настоящие, современные)
+// Пул настоящих браузерных user-agent
 const USER_AGENTS = [
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36',
@@ -17,9 +17,34 @@ const USER_AGENTS = [
 
 const randomUserAgent = () => USER_AGENTS[Math.floor(Math.random() * USER_AGENTS.length)];
 
+// Проверка валидности сессии и антибота
+async function validateSession(page) {
+  try {
+    await page.goto('https://www.ozon.ru/?__rr=1', {
+      waitUntil: 'domcontentloaded',
+      timeout: 12000,
+    });
+
+    const finalUrl = page.url();
+
+    if (finalUrl.includes('antibot') || finalUrl.includes('captcha')) {
+      logWithCapture('⛔ Cookies invalid — clearing cookies.json');
+
+      fs.writeFileSync(path.join(__dirname, '../cookies.json'), '[]');
+
+      return false;
+    }
+
+    return true;
+  } catch (err) {
+    warnWithCapture(`⚠ Session validation failed: ${err.message}`);
+    return false;
+  }
+}
+
 async function launchBrowserWithCookies() {
-  // Уникальный профиль под каждый запуск
-  const userDataDir = `/tmp/chrome_profile_${Date.now()}_${Math.random()}`;
+  // Постоянный Chrome профиль
+  const userDataDir = '/app/chrome-data';
 
   const args = [
     '--no-sandbox',
@@ -32,7 +57,7 @@ async function launchBrowserWithCookies() {
     '--lang=ru-RU,ru',
   ];
 
-  // Проксирование
+  // Прокси
   if (process.env.PROXY_URL) {
     args.unshift(`--proxy-server=${process.env.PROXY_URL}`);
     logWithCapture(`🌐 Proxy enabled`);
@@ -56,11 +81,11 @@ async function launchBrowserWithCookies() {
       });
       logWithCapture(`🔐 Proxy auth OK`);
     } catch (err) {
-      logWithCapture(`❌ Proxy auth failed: ${err.message}`);
+      warnWithCapture(`❌ Proxy auth failed: ${err.message}`);
     }
   }
 
-  // Человеческие настройки браузера
+  // Настройки браузера
   const ua = randomUserAgent();
   await page.setUserAgent(ua);
 
@@ -76,23 +101,30 @@ async function launchBrowserWithCookies() {
     window.chrome = { runtime: {} };
   });
 
-  // Подключаем cookies.json
+  // Загрузка cookies.json
   const cookiesPath = path.join(__dirname, '../cookies.json');
+
   if (fs.existsSync(cookiesPath)) {
     try {
       const raw = fs.readFileSync(cookiesPath, 'utf8');
       const cookies = JSON.parse(raw);
       const cookiesArr = Array.isArray(cookies) ? cookies : cookies.cookies;
+
       if (Array.isArray(cookiesArr) && cookiesArr.length > 0) {
         await page.setCookie(...cookiesArr);
-        logWithCapture(`🍪 Cookies loaded`);
+        logWithCapture(`🍪 Cookies loaded (${cookiesArr.length})`);
+      } else {
+        logWithCapture('⚠ cookies.json is empty');
       }
     } catch (err) {
-      logWithCapture(`⚠ Cookies load error: ${err.message}`);
+      warnWithCapture(`⚠ Cookies load error: ${err.message}`);
     }
   } else {
-    logWithCapture('⚠️ cookies.json не найден');
+    warnWithCapture('⚠ cookies.json not found — starting without cookies');
   }
+
+  // Проверка валидности сессии
+  await validateSession(page);
 
   // Проверка IP
   try {
@@ -106,7 +138,7 @@ async function launchBrowserWithCookies() {
 
     logWithCapture(`🌍 IP: ${parsed.ip}, Country: ${parsed.country}`);
   } catch (err) {
-    logWithCapture(`⚠ IP check failed: ${err.message}`);
+    warnWithCapture(`⚠ IP check failed: ${err.message}`);
   }
 
   logWithCapture('🚀 Puppeteer ready (stealth + proxy + cookies + random UA)');

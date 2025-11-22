@@ -1,4 +1,6 @@
 // main.js
+const fs = require('fs');
+const path = require('path');
 const { CONFIG } = require('./config');
 const { extractReviewsFromHtml } = require('./extractors/extractReviewsFromHtml');
 const {
@@ -317,9 +319,19 @@ async function parseReviewsFromUrl(
     throw new Error(err.message);
   } finally {
     try {
+      // Обновляем куки
+      try {
+        const cookies = await page.cookies();
+        fs.writeFileSync(path.join(__dirname, 'cookies.json'), JSON.stringify(cookies, null, 2));
+        logWithCapture(`💾 Cookies updated (${cookies.length})`);
+      } catch (err) {
+        logWithCapture(`⚠ Failed to update cookies: ${err.message}`);
+      }
+
+      // Закрываем браузер
       await browser.close();
       logWithCapture('🛑 Браузер закрыт');
-    } catch {
+    } catch (err) {
       warnWithCapture(
         '⚠️ Не удалось корректно закрыть браузер — выполняем принудительное завершение'
       );
