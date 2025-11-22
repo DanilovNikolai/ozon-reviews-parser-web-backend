@@ -2,7 +2,13 @@ const { autoScroll } = require('./autoScroll');
 const { sleep } = require('./sleep');
 const { expandAllSpoilers } = require('./expandAllSpoilers');
 const { getReviewsUrl, getReviewsUrlWithSort } = require('./getReviewsUrl');
-const { logWithCapture, warnWithCapture, errorWithCapture, getLogBuffer } = require('./logger');
+const {
+  logWithCapture,
+  warnWithCapture,
+  errorWithCapture,
+  getLogBuffer,
+  clearLogBuffer,
+} = require('./logger');
 const { generateHashFromReviews } = require('./generateHashFromReviews');
 const { removeDuplicates } = require('./removeDuplicates');
 const { getFormattedTimestamp } = require('./getFormattedTimestamp');
@@ -17,6 +23,7 @@ module.exports = {
   warnWithCapture,
   errorWithCapture,
   getLogBuffer,
+  clearLogBuffer,
   generateHashFromReviews,
   removeDuplicates,
   getFormattedTimestamp,

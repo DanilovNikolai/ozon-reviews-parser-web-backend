@@ -30,9 +30,14 @@ function getLogBuffer() {
   return logBuffer;
 }
 
+function clearLogBuffer() {
+  logBuffer = [];
+}
+
 module.exports = {
   logWithCapture,
   warnWithCapture,
   errorWithCapture,
   getLogBuffer,
+  clearLogBuffer,
 };

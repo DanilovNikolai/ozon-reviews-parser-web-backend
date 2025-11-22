@@ -13,34 +13,50 @@ const s3Client = new S3Client({
 });
 
 /**
- * Загружает файл или Buffer в S3
- * @param {string|Buffer} file - локальный путь или Buffer
- * @param {string} folder - папка в S3
- * @param {string} [filename] - имя файла (если Buffer)
- * @returns {Promise<string>} - URL загруженного файла
+ * Определяем Content-Type по расширению файла
+ */
+function detectContentType(filename) {
+  const ext = filename.toLowerCase();
+
+  if (ext.endsWith('.png')) return 'image/png';
+  if (ext.endsWith('.jpg') || ext.endsWith('.jpeg')) return 'image/jpeg';
+  if (ext.endsWith('.xlsx'))
+    return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+
+  return 'application/octet-stream';
+}
+
+/**
+ * Универсальная функция загрузки любого файла в S3
+ * @param {string|Buffer} file - путь или Buffer
+ * @param {string} folder - папка в корзине
+ * @param {string|null} filename - имя файла, если передаётся Buffer
+ * @returns {Promise<string>} — ссылка на загруженный файл
  */
 
 async function uploadToS3(file, folder = 'downloaded_files', filename = null) {
   let fileContent;
+
   if (Buffer.isBuffer(file)) {
     fileContent = file;
-    filename = filename || `file_${Date.now()}.xlsx`;
+    filename = filename || `file_${Date.now()}`;
   } else if (typeof file === 'string') {
     if (!fs.existsSync(file)) throw new Error(`Файл не найден: ${file}`);
     fileContent = fs.readFileSync(file);
     filename = filename || path.basename(file);
   } else {
-    throw new Error('uploadToS3: аргумент должен быть буффером или путём к файлу');
+    throw new Error('uploadToS3: аргумент должен быть Buffer или строкой пути');
   }
 
-  const key = `${folder}/${Date.now()}_${filename}`;
+  const contentType = detectContentType(filename);
+  const key = `${folder}/${filename}`;
 
   await s3Client.send(
     new PutObjectCommand({
       Bucket: process.env.YANDEX_BUCKET,
       Key: key,
       Body: fileContent,
-      ContentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      ContentType: contentType,
     })
   );
 
@@ -48,11 +64,8 @@ async function uploadToS3(file, folder = 'downloaded_files', filename = null) {
 }
 
 /**
- * Скачивает файл с S3 по URL и сохраняет во временный локальный путь
- * @param {string} s3FileUrl
- * @returns {Promise<string>} - локальный путь
+ * Скачивает файл с S3 по URL во временный путь
  */
-
 async function downloadFromS3(s3FileUrl) {
   const axios = require('axios');
   const tmpPath = path.join('/tmp', path.basename(s3FileUrl));
@@ -63,4 +76,11 @@ async function downloadFromS3(s3FileUrl) {
   return tmpPath;
 }
 
-module.exports = { uploadToS3, downloadFromS3 };
+/**
+ * Ззагрузка скриншотов
+ */
+async function uploadScreenshot(localPath) {
+  return uploadToS3(localPath, 'debug_screenshots');
+}
+
+module.exports = { uploadToS3, uploadScreenshot, downloadFromS3 };

@@ -1,14 +1,11 @@
 // services/excel.js
-const { generateExcelBuffer } = require('../helpers/saveToExcel');
-const { uploadToS3 } = require('./s3');
 const XLSX = require('xlsx');
 const fs = require('fs');
-const { logWithCapture } = require('../utils');
+const { uploadToS3 } = require('./s3');
+const { logWithCapture, getLogBuffer, clearLogBuffer } = require('../utils');
 
 /**
- * Читает Excel-файл с ссылками на товары и возвращает массив URL
- * @param {string} filePath - локальный путь к файлу, скачанному с S3
- * @returns {Promise<string[]>} - массив ссылок на товары
+ * Читает Excel-файл со списком ссылок на товары
  */
 async function readExcelLinks(filePath) {
   logWithCapture(`📥 Читаю Excel: ${filePath}`);
@@ -31,24 +28,117 @@ async function readExcelLinks(filePath) {
 }
 
 /**
- * Генерирует Excel с отзывами и загружает его на S3
- * @param {Array} allResults - массив объектов с результатами парсинга
- * @returns {Promise<string>} - URL загруженного Excel файла на S3
+ * Удаляет дубликаты, сравнивая с существующими строками (по URL + ordinal)
+ */
+function removeDuplicates(newRows, existingRows) {
+  const existingSet = new Set(existingRows.map((r) => `${r[0]}_${r[6]}`));
+
+  const uniqueRows = [];
+  let duplicates = 0;
+
+  for (const row of newRows) {
+    const key = `${row[0]}_${row[6]}`;
+    if (existingSet.has(key)) {
+      duplicates++;
+      continue;
+    }
+    existingSet.add(key);
+    uniqueRows.push(row);
+  }
+
+  return { uniqueRows, duplicateCount: duplicates };
+}
+
+/**
+ * Генерирует Excel-файл с отзывами + логами при ошибках.
+ * Возвращает URL загруженного файла в S3.
  */
 async function writeExcelReviews(allResults) {
   logWithCapture(`💾 Формируем Excel для ${allResults.length} товаров...`);
 
-  // Генерация Excel в Buffer
-  const buffer = generateExcelBuffer(allResults);
+  const wb = XLSX.utils.book_new();
+  const MAIN_SHEET = 'Отзывы Ozon';
+  const ERROR_SHEET = 'ОШИБКА';
+  const LOG_SHEET = 'ЛОГИ';
 
-  // Имя файла для S3
-  const filename = `ozon_reviews_${Date.now()}.xlsx`;
+  const headers = [
+    'Ссылка',
+    'Вариант товара',
+    'Комментарий',
+    'Оценка',
+    'Дата',
+    'Пользователь',
+    'Порядковый номер',
+    'Id товара',
+    'Совпавший товар',
+  ];
 
-  // Загружаем Buffer напрямую в S3
-  const s3Url = await uploadToS3(buffer, 'downloaded_files', filename);
+  // ------ собираем данные отзывов ------
+  const newRows = allResults.flatMap((res) =>
+    res.reviews.map((r) => [
+      r.url || '',
+      r.product || '',
+      r.comment || '',
+      r.rating || '',
+      r.date || '',
+      r.user || '',
+      r.ordinal || '',
+      r.hash || '',
+      r.urlMatch || '',
+    ])
+  );
 
-  logWithCapture(`✅ Excel загружен на S3: ${s3Url}`);
-  return s3Url;
+  const data = [headers, ...newRows];
+
+  const mainSheet = XLSX.utils.aoa_to_sheet(data);
+  XLSX.utils.book_append_sheet(wb, mainSheet, MAIN_SHEET);
+
+  // ------ ЕСЛИ БЫЛА ОШИБКА — создаём лист ERROR / ЛОГИ ------
+  const hasError = allResults.some((r) => r.error || r.errorOccurred);
+
+  if (hasError) {
+    logWithCapture('⚠️ Обнаружены ошибки — создаю лист ERROR и LOGS');
+
+    // Лист "ОШИБКА": краткое описание
+    const errorMessages = allResults
+      .filter((r) => r.error || r.errorOccurred)
+      .flatMap((r) => [
+        [`Ошибка при парсинге товара:`],
+        [r.productName || r.url || ''],
+        [r.error || 'Неизвестная ошибка'],
+        [''],
+      ]);
+
+    const errorSheet = XLSX.utils.aoa_to_sheet(errorMessages);
+    XLSX.utils.book_append_sheet(wb, errorSheet, ERROR_SHEET);
+
+    // Лист "ЛОГИ" — весь лог буфера
+    const logs = getLogBuffer();
+    const logsSheet = XLSX.utils.aoa_to_sheet(logs.map((l) => [l]));
+    XLSX.utils.book_append_sheet(wb, logsSheet, LOG_SHEET);
+  }
+
+  // ------ пишем файл в буфер ------
+  const buffer = XLSX.write(wb, { bookType: 'xlsx', type: 'buffer' });
+
+  // ====== ФОРМИРОВАНИЕ ИМЕНИ ФАЙЛА ======
+  const timestamp = Date.now();
+  let filename = `result_${timestamp}.xlsx`;
+
+  if (hasError) {
+    filename = `result_${timestamp}_ОШИБКА.xlsx`;
+  }
+
+  // ------ загрузка на S3 ------
+  const url = await uploadToS3(buffer, 'downloaded_files', filename);
+
+  logWithCapture(`📤 Excel загружен на S3: ${url}`);
+  logWithCapture(`📦 Уникальных отзывов добавлено: ${newRows.length}`);
+
+  // очищаем логи для следующего SKU
+  clearLogBuffer();
+
+  return url;
 }
 
 module.exports = { readExcelLinks, writeExcelReviews };
