@@ -62,7 +62,6 @@ async function runJob(jobId, { s3InputFileUrl, mode }) {
         const result = await parseReviewsFromUrl(
           url,
           mode,
-
           // Частичное сохранение → обновляем collectedReviews
           (partial) => {
             job.collectedReviews += partial.reviews.length;
@@ -72,8 +71,7 @@ async function runJob(jobId, { s3InputFileUrl, mode }) {
               `[Процесс ${jobId}] Промежуточное сохранение: ${partial.reviews.length} отзывов`
             );
           },
-
-          // Передаём job внутрь main.js, чтобы обновлять currentPage
+          // Передаём job внутрь main.js, чтобы обновлять currentPage/totalReviewsCount
           job
         );
 
@@ -83,9 +81,7 @@ async function runJob(jobId, { s3InputFileUrl, mode }) {
           errorOccurred: false,
         });
       } catch (err) {
-        errorWithCapture(
-          `❌ [Процесс ${jobId}] Ошибка при парсинге товара ${url}: ${err.message}`
-        );
+        errorWithCapture(`❌ [Процесс ${jobId}] Ошибка при парсинге товара ${url}: ${err.message}`);
 
         allResults.push({
           url,
@@ -125,7 +121,9 @@ async function runJob(jobId, { s3InputFileUrl, mode }) {
         await uploadScreenshot(file);
         logWithCapture(`[Процесс ${jobId}] 📤 Скриншот загружен: ${file}`);
       }
-    } catch (err) {}
+    } catch (err) {
+      warnWithCapture(`[Процесс ${jobId}] ⚠ Ошибка загрузки скриншота: ${err.message}`);
+    }
   }
 
   // 6) Готово
@@ -164,6 +162,7 @@ app.post('/parse', async (req, res) => {
     currentUrl: null,
     currentPage: 0,
     collectedReviews: 0,
+    totalReviewsCount: 0,
 
     cancelRequested: false,
   };
@@ -186,6 +185,19 @@ app.get('/parse/:jobId/status', (req, res) => {
     success: true,
     ...job,
   });
+});
+
+app.post('/parse/:jobId/cancel', (req, res) => {
+  const job = jobs[req.params.jobId];
+
+  if (!job) {
+    return res.status(404).json({ success: false, error: 'Задача не найдена' });
+  }
+
+  job.cancelRequested = true;
+  job.updatedAt = Date.now();
+
+  return res.json({ success: true, message: 'Отмена запрошена' });
 });
 
 app.listen(process.env.PORT || 8080, () => {

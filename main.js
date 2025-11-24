@@ -33,7 +33,12 @@ async function safeEvaluate(page, fn, timeout = 15000) {
 }
 
 // Основная функция парсинга
-async function parseReviewsFromUrl(url, mode = '3', onPartialSave = () => {}, jobRef = null) {
+async function parseReviewsFromUrl(
+  url,
+  mode = '3',
+  onPartialSave = () => {},
+  jobRef = null
+) {
   const { browser, page } = await launchBrowserWithCookies();
   const productNameMatch = url.match(/product\/([^/]+)/)?.[1] || 'Товар';
 
@@ -83,7 +88,7 @@ async function parseReviewsFromUrl(url, mode = '3', onPartialSave = () => {}, jo
         } catch (err) {
           warnWithCapture(`⚠ Ошибка при загрузке хэша: ${err.message}`);
           if (attempt === retries) {
-            throw new Error(`Не удалось загрузить страницу для хэша`);
+            throw new Error('Не удалось загрузить страницу для хэша');
           }
           await sleep(2000 + Math.random() * 2500);
         }
@@ -155,6 +160,11 @@ async function parseReviewsFromUrl(url, mode = '3', onPartialSave = () => {}, jo
       if (titleMatch) {
         totalReviewsCount = parseInt(titleMatch[1].replace(/[^\d]/g, ''), 10);
         logWithCapture(`📊 Отзывов всего: ${totalReviewsCount}`);
+
+        if (jobRef) {
+          jobRef.totalReviewsCount = totalReviewsCount;
+          jobRef.updatedAt = Date.now();
+        }
       }
     } catch {
       warnWithCapture('⚠ Не удалось определить количество отзывов по заголовку');
