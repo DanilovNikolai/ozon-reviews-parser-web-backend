@@ -233,16 +233,6 @@ async function parseReviewsFromUrl(
 
       logWithCapture(`📦 Всего собрано: ${allReviews.length}`);
 
-      if (collectedForSave.length >= CONFIG.saveInterval) {
-        onPartialSave({
-          productName: productNameMatch,
-          totalCount: totalReviewsCount,
-          reviews: [...collectedForSave],
-        });
-
-        collectedForSave.length = 0;
-      }
-
       if (mode === '3' && stop) {
         warnWithCapture('⛔ Режим 3: пустой комментарий, стоп');
         break;
@@ -255,15 +245,6 @@ async function parseReviewsFromUrl(
       pageIndex++;
 
       await sleep(2000 + Math.random() * 1000);
-    }
-
-    // Остаток
-    if (collectedForSave.length > 0) {
-      onPartialSave({
-        productName: productNameMatch,
-        totalCount: totalReviewsCount,
-        reviews: [...collectedForSave],
-      });
     }
 
     // Скриншот последней страницы
