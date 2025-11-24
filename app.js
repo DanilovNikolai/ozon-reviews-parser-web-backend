@@ -81,6 +81,14 @@ async function runJob(jobId, { s3InputFileUrl, mode }) {
           errorOccurred: false,
         });
       } catch (err) {
+        if (err.message === 'Парсинг отменён пользователем') {
+          job.status = 'cancelled';
+          job.error = null;
+          job.updatedAt = Date.now();
+          logWithCapture(`⛔ [Процесс ${jobId}] Остановлен пользователем`);
+          return;
+        }
+
         errorWithCapture(`❌ [Процесс ${jobId}] Ошибка при парсинге товара ${url}: ${err.message}`);
 
         allResults.push({

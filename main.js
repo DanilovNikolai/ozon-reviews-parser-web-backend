@@ -175,7 +175,7 @@ async function parseReviewsFromUrl(url, mode = '3', onPartialSave = () => {}, jo
       // ===== Проверка отмены =====
       if (jobRef && jobRef.cancelRequested) {
         logWithCapture('⛔ Отмена! Принудительно останавливаем парсер...');
-        break;
+        throw new Error('Парсинг отменён пользователем');
       }
 
       // Обновление статуса для фронта
