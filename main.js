@@ -33,12 +33,7 @@ async function safeEvaluate(page, fn, timeout = 15000) {
 }
 
 // Основная функция парсинга
-async function parseReviewsFromUrl(
-  url,
-  mode = '3',
-  onPartialSave = () => {},
-  jobRef = null
-) {
+async function parseReviewsFromUrl(url, mode = '3', onPartialSave = () => {}, jobRef = null) {
   const { browser, page } = await launchBrowserWithCookies();
   const productNameMatch = url.match(/product\/([^/]+)/)?.[1] || 'Товар';
 
@@ -177,6 +172,12 @@ async function parseReviewsFromUrl(
     let collectedTotal = 0;
 
     while (hasNextPage) {
+      // ===== Проверка отмены =====
+      if (jobRef && jobRef.cancelRequested) {
+        logWithCapture('⛔ Отмена! Принудительно останавливаем парсер...');
+        break;
+      }
+
       // Обновление статуса для фронта
       if (jobRef) {
         jobRef.currentPage = pageIndex;
@@ -240,6 +241,8 @@ async function parseReviewsFromUrl(
 
       await humanMouse(page);
       await humanScroll(page);
+
+      if (jobRef && jobRef.cancelRequested) break;
 
       hasNextPage = await goToNextPageByClick(page);
       pageIndex++;
