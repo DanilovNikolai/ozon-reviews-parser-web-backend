@@ -1,3 +1,4 @@
+// services/excel.js
 const XLSX = require('xlsx');
 const fs = require('fs');
 const { uploadToS3 } = require('./s3');
@@ -50,9 +51,32 @@ async function writeExcelReviews(allResults) {
     'Совпавший товар',
   ];
 
-  // ------ собираем данные отзывов ------
-  const rawRows = allResults.flatMap((res) =>
-    res.reviews.map((r) => [
+  const rawRows = [];
+
+  // ------ собираем данные отзывов + строки-дубли ------
+
+  for (const res of allResults) {
+    // Если это дубликат товара — добавляем одну специальную строку
+    if (res.skipped) {
+      rawRows.push([
+        res.url || '',
+        'ДУБЛЬ ТОВАРА',
+        'ДУБЛЬ ТОВАРА',
+        'ДУБЛЬ ТОВАРА',
+        'ДУБЛЬ ТОВАРА',
+        'ДУБЛЬ ТОВАРА',
+        'ДУБЛЬ ТОВАРА',
+        res.hash || '',
+        res.duplicateOfUrl || '',
+      ]);
+      continue;
+    }
+
+    if (!Array.isArray(res.reviews) || res.reviews.length === 0) {
+      continue;
+    }
+
+    const rowsForProduct = res.reviews.map((r) => [
       r.url || '',
       r.product || '',
       r.comment || '',
@@ -62,8 +86,10 @@ async function writeExcelReviews(allResults) {
       r.ordinal || '',
       r.hash || '',
       r.urlMatch || '',
-    ])
-  );
+    ]);
+
+    rawRows.push(...rowsForProduct);
+  }
 
   // ------ удаляем дубликаты из rawRows ------
   const { uniqueRows, duplicateCount } = removeDuplicates(rawRows, [], false);

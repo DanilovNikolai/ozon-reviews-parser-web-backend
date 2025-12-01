@@ -1,3 +1,4 @@
+// main.js
 const { CONFIG } = require('./config');
 const { extractReviewsFromHtml } = require('./extractors/extractReviewsFromHtml');
 const {
@@ -39,21 +40,45 @@ async function parseReviewsFromUrl(url, mode = '3', onPartialSave = () => {}, jo
 
     // ============================================================
     // Пропуск товара, если он был уже обработан ранее (проверка по hash)
+    // + фиксация информации о дубле
     // ============================================================
-    if (jobRef?.processedHashes?.includes(hashForThisProduct)) {
-      warnWithCapture(`⛔ Данный товар уже был обработан! Пропускаем: ${url}`);
-
-      return {
-        productName: productNameMatch,
-        totalCount: 0,
-        reviews: [],
-        logs: [...getLogBuffer()],
-        skipped: true,
-      };
-    }
-
     if (jobRef) {
-      jobRef.processedHashes.push(hashForThisProduct);
+      // Инициализируем структуру, если её ещё нет
+      if (!jobRef.processedProducts) {
+        jobRef.processedProducts = [];
+      }
+
+      const existingProduct = jobRef.processedProducts.find((p) => p.hash === hashForThisProduct);
+
+      if (existingProduct) {
+        const duplicateOfUrl = existingProduct.url;
+
+        warnWithCapture(
+          `⛔ Данный товар уже был обработан! Пропускаем: ${url} (совпадение с ${duplicateOfUrl})`
+        );
+
+        return {
+          productName: productNameMatch,
+          totalCount: 0,
+          reviews: [],
+          logs: [...getLogBuffer()],
+          skipped: true,
+          url,
+          hash: hashForThisProduct,
+          duplicateOfUrl,
+        };
+      }
+
+      // Если хэша ещё не было — запоминаем этот товар
+      jobRef.processedProducts.push({
+        hash: hashForThisProduct,
+        url,
+      });
+
+      // Для обратной совместимости — продолжаем заполнять processedHashes, если оно есть
+      if (Array.isArray(jobRef.processedHashes)) {
+        jobRef.processedHashes.push(hashForThisProduct);
+      }
     }
 
     // ============================================================
