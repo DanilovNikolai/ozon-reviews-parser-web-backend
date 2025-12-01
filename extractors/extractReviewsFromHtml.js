@@ -3,7 +3,7 @@ const { JSDOM } = require('jsdom');
 const { extractTextNodes } = require('./extractTextNodes');
 const { logWithCapture, warnWithCapture } = require('../utils');
 
-function extractReviewsFromHtml(html, mode = '1') {
+function extractReviewsFromHtml(html, mode = '3') {
   const dom = new JSDOM(html);
   const document = dom.window.document;
 
