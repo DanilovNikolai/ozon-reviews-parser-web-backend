@@ -10,7 +10,7 @@ const app = express();
 app.use(express.json({ limit: '10mb' }));
 
 // ===== ХРАНИЛИЩЕ ЗАДАЧ =====
-const jobs = {}; // jobId -> { ... }
+const jobs = {};
 
 function createJobId() {
   return Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
@@ -163,16 +163,14 @@ app.post('/parse', async (req, res) => {
     mode: mode || '3',
     createdAt: now,
     updatedAt: now,
-
     totalUrls: 0,
     processedUrls: 0,
-
     currentUrl: null,
     currentPage: 0,
     collectedReviews: 0,
     totalReviewsCount: 0,
-
     cancelRequested: false,
+    processedHashes: [],
   };
 
   logWithCapture(`🧩 Создана задача ${jobId}`);
