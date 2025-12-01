@@ -1,8 +1,7 @@
-// services/excel.js
 const XLSX = require('xlsx');
 const fs = require('fs');
 const { uploadToS3 } = require('./s3');
-const { logWithCapture, getLogBuffer, clearLogBuffer } = require('../utils');
+const { logWithCapture, getLogBuffer, clearLogBuffer, removeDuplicates } = require('../utils');
 
 /**
  * Читает Excel-файл со списком ссылок на товары
@@ -25,28 +24,6 @@ async function readExcelLinks(filePath) {
 
   logWithCapture(`🔗 Найдено ссылок: ${urls.length}`);
   return urls;
-}
-
-/**
- * Удаляет дубликаты, сравнивая с существующими строками (по URL + ordinal)
- */
-function removeDuplicates(newRows, existingRows) {
-  const existingSet = new Set(existingRows.map((r) => `${r[0]}_${r[6]}`));
-
-  const uniqueRows = [];
-  let duplicates = 0;
-
-  for (const row of newRows) {
-    const key = `${row[0]}_${row[6]}`;
-    if (existingSet.has(key)) {
-      duplicates++;
-      continue;
-    }
-    existingSet.add(key);
-    uniqueRows.push(row);
-  }
-
-  return { uniqueRows, duplicateCount: duplicates };
 }
 
 /**
@@ -74,7 +51,7 @@ async function writeExcelReviews(allResults) {
   ];
 
   // ------ собираем данные отзывов ------
-  const newRows = allResults.flatMap((res) =>
+  const rawRows = allResults.flatMap((res) =>
     res.reviews.map((r) => [
       r.url || '',
       r.product || '',
@@ -88,9 +65,13 @@ async function writeExcelReviews(allResults) {
     ])
   );
 
-  const data = [headers, ...newRows];
+  // ------ удаляем дубликаты из rawRows ------
+  const { uniqueRows, duplicateCount } = removeDuplicates(rawRows, [], false);
 
-  const mainSheet = XLSX.utils.aoa_to_sheet(data);
+  logWithCapture(`🧹 Удалено дубликатов отзывов: ${duplicateCount}`);
+  logWithCapture(`📦 Уникальных отзывов осталось: ${uniqueRows.length}`);
+
+  const mainSheet = XLSX.utils.aoa_to_sheet([headers, ...uniqueRows]);
   XLSX.utils.book_append_sheet(wb, mainSheet, MAIN_SHEET);
 
   // ------ ЕСЛИ БЫЛА ОШИБКА — создаём лист ERROR / ЛОГИ ------
@@ -99,7 +80,7 @@ async function writeExcelReviews(allResults) {
   if (hasError) {
     logWithCapture('⚠️ Обнаружены ошибки — создаю лист ERROR и LOGS');
 
-    // Лист "ОШИБКА": краткое описание
+    // Лист "ОШИБКА"
     const errorMessages = allResults
       .filter((r) => r.error || r.errorOccurred)
       .flatMap((r) => [
@@ -112,7 +93,7 @@ async function writeExcelReviews(allResults) {
     const errorSheet = XLSX.utils.aoa_to_sheet(errorMessages);
     XLSX.utils.book_append_sheet(wb, errorSheet, ERROR_SHEET);
 
-    // Лист "ЛОГИ" — весь лог буфера
+    // Лист "ЛОГИ"
     const logs = getLogBuffer();
     const logsSheet = XLSX.utils.aoa_to_sheet(logs.map((l) => [l]));
     XLSX.utils.book_append_sheet(wb, logsSheet, LOG_SHEET);
@@ -121,7 +102,6 @@ async function writeExcelReviews(allResults) {
   // ------ пишем файл в буфер ------
   const buffer = XLSX.write(wb, { bookType: 'xlsx', type: 'buffer' });
 
-  // ====== ФОРМИРОВАНИЕ ИМЕНИ ФАЙЛА ======
   const timestamp = Date.now();
   let filename = `result_${timestamp}.xlsx`;
 
@@ -133,9 +113,8 @@ async function writeExcelReviews(allResults) {
   const url = await uploadToS3(buffer, 'downloaded_files', filename);
 
   logWithCapture(`📤 Excel загружен на S3: ${url}`);
-  logWithCapture(`📦 Уникальных отзывов добавлено: ${newRows.length}`);
+  logWithCapture(`📦 Уникальных отзывов добавлено в файл: ${uniqueRows.length}`);
 
-  // очищаем логи для следующего SKU
   clearLogBuffer();
 
   return url;
