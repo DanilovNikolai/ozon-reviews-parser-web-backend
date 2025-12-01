@@ -1,9 +1,8 @@
-const { parseReviewsFromUrl } = require('../main');
 const { getLogBuffer, logWithCapture, errorWithCapture } = require('../utils');
 
 // Обрабатывает один товар (одну ссылку) и возвращает объект результата
 
-async function processProduct({ url, job, mode }) {
+async function processProduct({ url, job, mode, parseFn }) {
   job.currentUrl = url;
   job.currentPage = 0;
   job.collectedReviews = 0;
@@ -12,7 +11,7 @@ async function processProduct({ url, job, mode }) {
   logWithCapture(`▶ [Процесс ${job.id}] Парсинг товара: ${url}`);
 
   try {
-    const result = await parseReviewsFromUrl(
+    const result = await parseFn(
       url,
       mode,
       // Промежуточное сохранение (для режимов парсинга)

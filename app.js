@@ -1,4 +1,5 @@
 const express = require('express');
+const { parseReviewsFromUrl } = require('./main');
 const fs = require('fs');
 
 const {
@@ -48,7 +49,7 @@ async function runJob(jobId, { s3InputFileUrl, mode }) {
         return;
       }
 
-      const result = await processProduct({ url, job, mode });
+      const result = await processProduct({ url, job, mode, parseFn: parseReviewsFromUrl });
 
       allResults.push(result);
 
