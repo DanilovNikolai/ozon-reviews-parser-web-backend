@@ -1,5 +1,4 @@
 // Преобразование ссылки товара в ссылку с /reviews перед параметрами
-
 function getReviewsUrl(productUrl) {
   const [base, params] = productUrl.split('?');
   if (params) {

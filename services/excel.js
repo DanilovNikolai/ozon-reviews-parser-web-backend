@@ -1,12 +1,9 @@
-// services/excel.js
 const XLSX = require('xlsx');
 const fs = require('fs');
 const { uploadToS3 } = require('./s3');
 const { logWithCapture, getLogBuffer, clearLogBuffer, removeDuplicates } = require('../utils');
 
-/**
- * Читает Excel-файл со списком ссылок на товары
- */
+// === Читает Excel-файл со списком ссылок на товары ===
 async function readExcelLinks(filePath) {
   logWithCapture(`📥 Читаю Excel: ${filePath}`);
 
@@ -27,10 +24,7 @@ async function readExcelLinks(filePath) {
   return urls;
 }
 
-/**
- * Генерирует Excel-файл с отзывами + логами при ошибках.
- * Возвращает URL загруженного файла в S3.
- */
+// === Генерирует Excel-файл с отзывами + логами при ошибках. Возвращает URL загруженного файла в S3. ===
 async function writeExcelReviews(allResults) {
   logWithCapture(`💾 Формируем Excel для ${allResults.length} товаров...`);
 
@@ -53,8 +47,7 @@ async function writeExcelReviews(allResults) {
 
   const rawRows = [];
 
-  // ------ собираем данные отзывов + строки-дубли ------
-
+  // === собираем данные отзывов + строки-дубли ===
   for (const res of allResults) {
     // Если это дубликат товара — добавляем одну специальную строку
     if (res.skipped) {
@@ -91,7 +84,7 @@ async function writeExcelReviews(allResults) {
     rawRows.push(...rowsForProduct);
   }
 
-  // ------ удаляем дубликаты из rawRows ------
+  // === удаляем дубликаты из rawRows ===
   const { uniqueRows, duplicateCount } = removeDuplicates(rawRows, [], false);
 
   logWithCapture(`🧹 Удалено дубликатов отзывов: ${duplicateCount}`);
@@ -100,7 +93,7 @@ async function writeExcelReviews(allResults) {
   const mainSheet = XLSX.utils.aoa_to_sheet([headers, ...uniqueRows]);
   XLSX.utils.book_append_sheet(wb, mainSheet, MAIN_SHEET);
 
-  // ------ ЕСЛИ БЫЛА ОШИБКА — создаём лист ERROR / ЛОГИ ------
+  // === ЕСЛИ БЫЛА ОШИБКА — создаём лист ERROR / ЛОГИ ===
   const hasError = allResults.some((r) => r.error || r.errorOccurred);
 
   if (hasError) {
@@ -125,7 +118,7 @@ async function writeExcelReviews(allResults) {
     XLSX.utils.book_append_sheet(wb, logsSheet, LOG_SHEET);
   }
 
-  // ------ пишем файл в буфер ------
+  // === пишем файл в буфер ===
   const buffer = XLSX.write(wb, { bookType: 'xlsx', type: 'buffer' });
 
   const timestamp = Date.now();
@@ -135,7 +128,7 @@ async function writeExcelReviews(allResults) {
     filename = `result_${timestamp}_ОШИБКА.xlsx`;
   }
 
-  // ------ загрузка на S3 ------
+  // === загрузка на S3 ===
   const url = await uploadToS3(buffer, 'downloaded_files', filename);
 
   logWithCapture(`📤 Excel загружен на S3: ${url}`);

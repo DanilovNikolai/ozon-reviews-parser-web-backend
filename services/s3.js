@@ -1,4 +1,3 @@
-// services/s3.js
 const { S3Client, PutObjectCommand } = require('@aws-sdk/client-s3');
 const fs = require('fs');
 const path = require('path');
@@ -12,9 +11,7 @@ const s3Client = new S3Client({
   },
 });
 
-/**
- * Определяем Content-Type по расширению файла
- */
+// === Определяем Content-Type по расширению файла ===
 function detectContentType(filename) {
   const ext = filename.toLowerCase();
 
@@ -63,9 +60,7 @@ async function uploadToS3(file, folder = 'downloaded_files', filename = null) {
   return `https://storage.yandexcloud.net/${process.env.YANDEX_BUCKET}/${key}`;
 }
 
-/**
- * Скачивает файл с S3 по URL во временный путь
- */
+// === Скачивает файл с S3 по URL во временный путь ===
 async function downloadFromS3(s3FileUrl) {
   const axios = require('axios');
   const tmpPath = path.join('/tmp', path.basename(s3FileUrl));
@@ -76,9 +71,7 @@ async function downloadFromS3(s3FileUrl) {
   return tmpPath;
 }
 
-/**
- * Ззагрузка скриншотов
- */
+// === Загрузка скриншотов ===
 async function uploadScreenshot(localPath) {
   return uploadToS3(localPath, 'debug_screenshots');
 }
