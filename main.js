@@ -1,4 +1,3 @@
-// main.js
 const fs = require('fs');
 const path = require('path');
 const { CONFIG } = require('./config');
@@ -14,82 +13,35 @@ const {
   errorWithCapture,
   getLogBuffer,
   generateHashFromReviews,
+  humanKeyboard,
+  humanMouse,
+  humanScroll,
+  getTotalReviewsCountFromTitle,
 } = require('./utils');
 
-const { humanMouse } = require('./utils/humanMouse');
-const { humanScroll } = require('./utils/humanScroll');
-const { humanKeyboard } = require('./utils/humanKeyboard');
-
-const { goToNextPageByClick, launchBrowserWithCookies } = require('./helpers');
-
-// Безопасный evaluate с таймаутом
-async function safeEvaluate(page, fn, timeout = 15000) {
-  return Promise.race([
-    page.evaluate(fn),
-    new Promise((_, reject) =>
-      setTimeout(() => reject(new Error('evaluate timeout exceeded')), timeout)
-    ),
-  ]);
-}
+const {
+  goToNextPageByClick,
+  launchBrowserWithCookies,
+  loadPageForHash,
+  safeEvaluate,
+} = require('./helpers');
 
 // Основная функция парсинга
 async function parseReviewsFromUrl(url, mode = '3', onPartialSave = () => {}, jobRef = null) {
   const { browser, page } = await launchBrowserWithCookies();
   const productNameMatch = url.match(/product\/([^/]+)/)?.[1] || 'Товар';
 
-  let hashForThisProduct = '';
   const allReviews = [];
   const collectedForSave = [];
-
+  let hashForThisProduct = '';
   let totalReviewsCount = 0;
   let pageIndex = 1;
   let firstScreenshotDone = false;
-
-  const FIRST_SCREENSHOT_PATH = '/tmp/debug_hash.png';
-  const LAST_SCREENSHOT_PATH = '/tmp/debug_reviews.png';
 
   try {
     // ============================================================
     // Загрузка страницы для ХЭША
     // ============================================================
-    async function loadPageForHash(page, url, retries = 3) {
-      for (let attempt = 1; attempt <= retries; attempt++) {
-        logWithCapture(`🔄 Загрузка страницы для хэша (попытка ${attempt}/${retries})`);
-
-        try {
-          await page.goto(url, {
-            waitUntil: ['networkidle0', 'domcontentloaded'],
-            timeout: CONFIG.nextPageTimeout,
-          });
-
-          const currentUrl = page.url();
-          if (currentUrl.includes('captcha') || currentUrl.includes('antibot')) {
-            warnWithCapture('⚠️ Попали на антибот при генерации хэша');
-            await sleep(2000 + Math.random() * 3000);
-            continue;
-          }
-
-          const selector = '[data-widget="webListReviews"]';
-          if (!(await page.$(selector))) {
-            warnWithCapture('⚠️ Нет блока отзывов — возможно антибот');
-            await sleep(2000 + Math.random() * 3000);
-            continue;
-          }
-
-          await page.waitForSelector(selector, { timeout: 15000 });
-
-          logWithCapture('✅ Страница для хэша загружена');
-          return;
-        } catch (err) {
-          warnWithCapture(`⚠ Ошибка при загрузке хэша: ${err.message}`);
-          if (attempt === retries) {
-            throw new Error('Не удалось загрузить страницу для хэша');
-          }
-          await sleep(2000 + Math.random() * 2500);
-        }
-      }
-    }
-
     const hashUrl = getReviewsUrlWithSort(url, 'score_asc');
     await loadPageForHash(page, hashUrl);
 
@@ -138,9 +90,9 @@ async function parseReviewsFromUrl(url, mode = '3', onPartialSave = () => {}, jo
     // Скриншот первой страницы
     try {
       if (!firstScreenshotDone) {
-        await page.screenshot({ path: FIRST_SCREENSHOT_PATH, fullPage: true });
+        await page.screenshot({ path: CONFIG.firstScreenshotPath, fullPage: true });
         firstScreenshotDone = true;
-        logWithCapture(`📸 Скриншот первой страницы: ${FIRST_SCREENSHOT_PATH}`);
+        logWithCapture(`📸 Скриншот первой страницы: ${CONFIG.firstScreenshotPath}`);
       }
     } catch (e) {
       warnWithCapture(`⚠ Ошибка скриншота первой страницы: ${e.message}`);
@@ -151,15 +103,12 @@ async function parseReviewsFromUrl(url, mode = '3', onPartialSave = () => {}, jo
     // ============================================================
     try {
       const titleText = await page.title();
-      const titleMatch = titleText.match(/([\d\s]+)\s+отзыв/i);
-      if (titleMatch) {
-        totalReviewsCount = parseInt(titleMatch[1].replace(/[^\d]/g, ''), 10);
-        logWithCapture(`📊 Отзывов всего: ${totalReviewsCount}`);
+      totalReviewsCount = getTotalReviewsCountFromTitle(titleText);
+      logWithCapture(`📊 Отзывов всего: ${totalReviewsCount}`);
 
-        if (jobRef) {
-          jobRef.totalReviewsCount = totalReviewsCount;
-          jobRef.updatedAt = Date.now();
-        }
+      if (jobRef) {
+        jobRef.totalReviewsCount = totalReviewsCount;
+        jobRef.updatedAt = Date.now();
       }
     } catch {
       warnWithCapture('⚠ Не удалось определить количество отзывов по заголовку');
@@ -253,8 +202,8 @@ async function parseReviewsFromUrl(url, mode = '3', onPartialSave = () => {}, jo
     // Скриншот последней страницы
     try {
       await sleep(1000);
-      await page.screenshot({ path: LAST_SCREENSHOT_PATH, fullPage: true });
-      logWithCapture(`📸 Скриншот последней страницы: ${LAST_SCREENSHOT_PATH}`);
+      await page.screenshot({ path: CONFIG.lastScreenshotPath, fullPage: true });
+      logWithCapture(`📸 Скриншот последней страницы: ${CONFIG.lastScreenshotPath}`);
     } catch (e) {
       warnWithCapture(`⚠ Ошибка скриншота последней: ${e.message}`);
     }
@@ -272,7 +221,7 @@ async function parseReviewsFromUrl(url, mode = '3', onPartialSave = () => {}, jo
   } catch (err) {
     try {
       await sleep(500);
-      await page.screenshot({ path: LAST_SCREENSHOT_PATH, fullPage: true });
+      await page.screenshot({ path: CONFIG.lastScreenshotPath, fullPage: true });
     } catch {}
 
     errorWithCapture('❌ Ошибка при парсинге:', err.message);
