@@ -13,6 +13,10 @@ const { generateHashFromReviews } = require('./generateHashFromReviews');
 const { removeDuplicates } = require('./removeDuplicates');
 const { getFormattedTimestamp } = require('./getFormattedTimestamp');
 const { cleanString } = require('./cleanString');
+const { humanMouse } = require('./humanMouse');
+const { humanScroll } = require('./humanScroll');
+const { humanKeyboard } = require('./humanKeyboard');
+const { getTotalReviewsCountFromTitle } = require('./getTotalReviewsCountFromTitle');
 
 module.exports = {
   autoScroll,
@@ -29,4 +33,8 @@ module.exports = {
   getFormattedTimestamp,
   cleanString,
   getReviewsUrlWithSort,
+  humanKeyboard,
+  humanMouse,
+  humanScroll,
+  getTotalReviewsCountFromTitle,
 };
