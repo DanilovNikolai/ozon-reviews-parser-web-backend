@@ -49,7 +49,7 @@ async function runJob(jobId, { s3InputFileUrl, mode }) {
         return;
       }
 
-      const result = await processProduct({ url, job, mode, parseFn: parseReviewsFromUrl });
+      const result = await processProduct({ url, job, mode, parseReviewsFromUrl });
 
       allResults.push(result);
 
