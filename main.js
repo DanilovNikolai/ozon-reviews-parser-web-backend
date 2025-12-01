@@ -1,5 +1,3 @@
-const fs = require('fs');
-const path = require('path');
 const { CONFIG } = require('./config');
 const { extractReviewsFromHtml } = require('./extractors/extractReviewsFromHtml');
 const {
@@ -7,24 +5,19 @@ const {
   sleep,
   expandAllSpoilers,
   getReviewsUrl,
-  getReviewsUrlWithSort,
   logWithCapture,
   warnWithCapture,
   errorWithCapture,
   getLogBuffer,
-  generateHashFromReviews,
   humanKeyboard,
   humanMouse,
   humanScroll,
   getTotalReviewsCountFromTitle,
 } = require('./utils');
 
-const {
-  goToNextPageByClick,
-  launchBrowserWithCookies,
-  loadPageForHash,
-  safeEvaluate,
-} = require('./helpers');
+const { goToNextPageByClick, launchBrowserWithCookies } = require('./helpers');
+
+const { closeBrowser, saveCookies, calculateProductHash, updateJobStatus } = require('./services');
 
 // Основная функция парсинга
 async function parseReviewsFromUrl(url, mode = '3', onPartialSave = () => {}, jobRef = null) {
@@ -42,21 +35,7 @@ async function parseReviewsFromUrl(url, mode = '3', onPartialSave = () => {}, jo
     // ============================================================
     // Загрузка страницы для ХЭША
     // ============================================================
-    const hashUrl = getReviewsUrlWithSort(url, 'score_asc');
-    await loadPageForHash(page, hashUrl);
-
-    const htmlForHash = await safeEvaluate(
-      page,
-      () => {
-        const container = document.querySelector('[data-widget="webListReviews"]') || document.body;
-        return container.innerHTML;
-      },
-      10000
-    );
-
-    const { reviews: hashReviews } = extractReviewsFromHtml(htmlForHash, mode);
-    const hash = generateHashFromReviews(hashReviews);
-    hashForThisProduct = hash;
+    hashForThisProduct = await calculateProductHash(url, page, mode);
 
     // ============================================================
     // Основная страница отзывов
@@ -105,11 +84,8 @@ async function parseReviewsFromUrl(url, mode = '3', onPartialSave = () => {}, jo
       const titleText = await page.title();
       totalReviewsCount = getTotalReviewsCountFromTitle(titleText);
       logWithCapture(`📊 Отзывов всего: ${totalReviewsCount}`);
-
-      if (jobRef) {
-        jobRef.totalReviewsCount = totalReviewsCount;
-        jobRef.updatedAt = Date.now();
-      }
+      // Обновление статуса общего количества отзывов для фронта
+      updateJobStatus(jobRef, { totalReviewsCount });
     } catch {
       warnWithCapture('⚠ Не удалось определить количество отзывов по заголовку');
     }
@@ -122,16 +98,13 @@ async function parseReviewsFromUrl(url, mode = '3', onPartialSave = () => {}, jo
 
     while (hasNextPage) {
       // ===== Проверка отмены =====
-      if (jobRef && jobRef.cancelRequested) {
+      if (jobRef?.cancelRequested) {
         logWithCapture('⛔ Отмена! Принудительно останавливаем парсер...');
         throw new Error('Парсинг отменён пользователем');
       }
 
-      // Обновление статуса для фронта
-      if (jobRef) {
-        jobRef.currentPage = pageIndex;
-        jobRef.updatedAt = Date.now();
-      }
+      // Обновление статуса текущей страницы для фронта
+      updateJobStatus(jobRef, { currentPage: pageIndex });
 
       logWithCapture(`📄 Парсим страницу #${pageIndex}`);
 
@@ -175,11 +148,8 @@ async function parseReviewsFromUrl(url, mode = '3', onPartialSave = () => {}, jo
       collectedForSave.push(...reviews);
       collectedTotal += reviews.length;
 
-      // Обновление прогресса отзывов в задаче
-      if (jobRef) {
-        jobRef.collectedReviews = collectedTotal;
-        jobRef.updatedAt = Date.now();
-      }
+      // Обновление количества собранных отзывов для фронта
+      updateJobStatus(jobRef, { collectedReviews: collectedTotal });
 
       logWithCapture(`📦 Всего собрано: ${allReviews.length}`);
 
@@ -191,7 +161,7 @@ async function parseReviewsFromUrl(url, mode = '3', onPartialSave = () => {}, jo
       await humanMouse(page);
       await humanScroll(page);
 
-      if (jobRef && jobRef.cancelRequested) break;
+      if (jobRef?.cancelRequested) break;
 
       hasNextPage = await goToNextPageByClick(page);
       pageIndex++;
@@ -227,22 +197,9 @@ async function parseReviewsFromUrl(url, mode = '3', onPartialSave = () => {}, jo
     errorWithCapture('❌ Ошибка при парсинге:', err.message);
     throw new Error(err.message);
   } finally {
-    // Обновляем куки
-    try {
-      const cookies = await page.cookies();
-      fs.writeFileSync(path.join(__dirname, 'cookies.json'), JSON.stringify(cookies, null, 2));
-      logWithCapture(`💾 Cookies updated (${cookies.length})`);
-    } catch (err) {
-      logWithCapture(`⚠ Ошибка обновления cookies: ${err.message}`);
-    }
-
-    try {
-      await browser.close();
-      logWithCapture('🛑 Браузер закрыт');
-    } catch {
-      const browserProcess = browser.process();
-      if (browserProcess) browserProcess.kill('SIGKILL');
-    }
+    // Обновляем куки, чтобы не устаревали и закрываем браузер
+    await saveCookies(page);
+    await closeBrowser(browser);
   }
 }
 
