@@ -33,9 +33,28 @@ async function parseReviewsFromUrl(url, mode = '3', onPartialSave = () => {}, jo
 
   try {
     // ============================================================
-    // Загрузка страницы для ХЭША
+    // Загрузка страницы для получения hash товара
     // ============================================================
     hashForThisProduct = await calculateProductHash(url, page, mode);
+
+    // ============================================================
+    // Пропуск товара, если он был уже обработан ранее (проверка по hash)
+    // ============================================================
+    if (jobRef?.processedHashes?.includes(hashForThisProduct)) {
+      warnWithCapture(`⛔ Данный товар уже был обработан! Пропускаем: ${url}`);
+
+      return {
+        productName: productNameMatch,
+        totalCount: 0,
+        reviews: [],
+        logs: [...getLogBuffer()],
+        skipped: true,
+      };
+    }
+
+    if (jobRef) {
+      jobRef.processedHashes.push(hashForThisProduct);
+    }
 
     // ============================================================
     // Основная страница отзывов
