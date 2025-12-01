@@ -90,16 +90,16 @@ async function parseReviewsFromUrl(url, mode = '3', onPartialSave = () => {}, jo
 
     logWithCapture(`✅ Страница загружена: ${page.url()}`);
 
-    await humanMouse(page);
-    await humanScroll(page);
-    await humanKeyboard(page);
+    // await humanMouse(page);
+    // await humanScroll(page);
+    // await humanKeyboard(page);
 
-    await sleep(800 + Math.random() * 1200);
+    // await sleep(800 + Math.random() * 1200);
 
-    if (Math.random() < 0.2) {
-      logWithCapture('⏳ Думаю как человек перед чтением...');
-      await sleep(2000 + Math.random() * 3000);
-    }
+    // if (Math.random() < 0.2) {
+    //   logWithCapture('⏳ Думаю как человек перед чтением...');
+    //   await sleep(2000 + Math.random() * 3000);
+    // }
 
     if (page.url().includes('captcha') || page.url().includes('antibot')) {
       throw new Error('Ozon вернул антибот страницу на основной странице');
@@ -151,18 +151,18 @@ async function parseReviewsFromUrl(url, mode = '3', onPartialSave = () => {}, jo
 
       logWithCapture(`📄 Парсим страницу #${pageIndex}`);
 
-      await humanMouse(page);
-      await humanScroll(page);
+      // await humanMouse(page);
+      // await humanScroll(page);
 
-      await sleep(300 + Math.random() * 600);
+      // await sleep(300 + Math.random() * 600);
 
-      await autoScroll(page);
-      await humanKeyboard(page);
+      // await autoScroll(page);
+      // await humanKeyboard(page);
 
-      if (Math.random() < 0.2) {
-        logWithCapture('⏳ Человек задумался...');
-        await sleep(3000 + Math.random() * 5000);
-      }
+      // if (Math.random() < 0.2) {
+      //   logWithCapture('⏳ Человек задумался...');
+      //   await sleep(3000 + Math.random() * 5000);
+      // }
 
       await expandAllSpoilers(page);
       await sleep(350);
@@ -201,8 +201,8 @@ async function parseReviewsFromUrl(url, mode = '3', onPartialSave = () => {}, jo
         break;
       }
 
-      await humanMouse(page);
-      await humanScroll(page);
+      // await humanMouse(page);
+      // await humanScroll(page);
 
       if (jobRef?.cancelRequested) break;
 
