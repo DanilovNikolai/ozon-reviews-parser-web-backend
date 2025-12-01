@@ -171,6 +171,7 @@ app.post('/parse', async (req, res) => {
     totalReviewsCount: 0,
     cancelRequested: false,
     processedHashes: [],
+    processedProducts: [],
   };
 
   logWithCapture(`🧩 Создана задача ${jobId}`);
