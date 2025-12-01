@@ -1,7 +1,7 @@
 const { CONFIG } = require('../config');
 const { logWithCapture, warnWithCapture, sleep } = require('../utils');
 
-export async function loadPageForHash(page, url, retries = 3) {
+async function loadPageForHash(page, url, retries = 3) {
   for (let attempt = 1; attempt <= retries; attempt++) {
     logWithCapture(`🔄 Загрузка страницы для хэша (попытка ${attempt}/${retries})`);
 
@@ -38,3 +38,5 @@ export async function loadPageForHash(page, url, retries = 3) {
     }
   }
 }
+
+module.exports = { loadPageForHash };
