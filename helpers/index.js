@@ -1,5 +1,11 @@
 const { goToNextPageByClick } = require('./paginator');
-const { saveAllReviewsToExcel } = require('./saveToExcel');
 const { launchBrowserWithCookies } = require('./launchBrowser');
+const { loadPageForHash } = require('./loadPageForHash');
+const { safeEvaluate } = require('./safeEvaluate');
 
-module.exports = { goToNextPageByClick, saveAllReviewsToExcel, launchBrowserWithCookies };
+module.exports = {
+  goToNextPageByClick,
+  launchBrowserWithCookies,
+  loadPageForHash,
+  safeEvaluate,
+};
