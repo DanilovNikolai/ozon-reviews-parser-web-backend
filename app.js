@@ -140,12 +140,14 @@ app.post('/parse/:jobId/cancel', (req, res) => {
   const job = getJob(jobId);
 
   if (!job) {
-    return res.status(404).json({ success: false, error: 'Задача не найдена' });
+    return res.json({ success: false, error: 'Задача не найдена' });
   }
 
-  // === ЕСЛИ ЗАДАЧА ЕЩЁ В ОЧЕРЕДИ — отменяем мгновенно ===
+  // --- если задача в очереди ---
   if (job.status === 'queued') {
-    jobQueue = jobQueue.filter((id) => id !== jobId);
+    const index = jobQueue.indexOf(jobId);
+    if (index !== -1) jobQueue.splice(index, 1);
+
     job.status = 'cancelled';
     job.updatedAt = Date.now();
 
@@ -153,17 +155,17 @@ app.post('/parse/:jobId/cancel', (req, res) => {
 
     return res.json({
       success: true,
-      message: 'Задача отменена (она была в очереди и не запускалась)',
+      message: 'Задача в очереди отменена',
     });
   }
 
-  // === ЕСЛИ ЗАДАЧА УЖЕ РАБОТАЕТ - ставим флаг отмены ===
+  // --- если активная ---
   job.cancelRequested = true;
   job.updatedAt = Date.now();
 
   return res.json({
     success: true,
-    message: 'Отмена запрошена — задача будет остановлена',
+    message: 'Запрошена отмена активной задачи',
   });
 });
 
