@@ -1,7 +1,7 @@
 const jobs = {};
 
 let activeJobId = null;
-let jobQueue = [];
+const jobQueue = [];
 
 // Уникальный ID
 function createJobId() {
@@ -53,14 +53,20 @@ function getJob(jobId) {
 // Обновление позиций в очереди
 function updateQueuePositions() {
   jobQueue.forEach((id, index) => {
-    if (jobs[id]) jobs[id].queuePosition = index;
+    const job = jobs[id];
+    if (job) {
+      job.queuePosition = index;
+
+      // очередь с учётом активной задачи
+      job.humanQueuePosition = activeJobId && job.id !== activeJobId ? index + 1 : index;
+    }
   });
 
-  // Отмечаем активность
-  Object.values(jobs).forEach((job) => {
-    job.inQueue = jobQueue.includes(job.id);
-    job.isActive = activeJobId === job.id;
-  });
+  // для активной задачи отображаем, что она перед всеми
+  if (activeJobId && jobs[activeJobId]) {
+    jobs[activeJobId].queuePosition = 0;
+    jobs[activeJobId].humanQueuePosition = 0;
+  }
 }
 
 // Запуск job
