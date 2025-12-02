@@ -37,6 +37,7 @@ function createJob({ s3InputFileUrl, mode }) {
     processedHashes: [],
 
     queuePosition: 0,
+    humanQueuePosition: 0,
   };
 
   jobQueue.push(jobId);
@@ -50,19 +51,17 @@ function getJob(jobId) {
   return jobs[jobId] || null;
 }
 
-// Обновление позиций в очереди
+// Обновление позиций
 function updateQueuePositions() {
   jobQueue.forEach((id, index) => {
     const job = jobs[id];
     if (job) {
       job.queuePosition = index;
-
-      // очередь с учётом активной задачи
       job.humanQueuePosition = activeJobId && job.id !== activeJobId ? index + 1 : index;
     }
   });
 
-  // для активной задачи отображаем, что она перед всеми
+  // активная задача всегда позиция 0
   if (activeJobId && jobs[activeJobId]) {
     jobs[activeJobId].queuePosition = 0;
     jobs[activeJobId].humanQueuePosition = 0;
@@ -72,10 +71,14 @@ function updateQueuePositions() {
 // Запуск job
 function startJob(jobId) {
   activeJobId = jobId;
+
   jobs[jobId].status = 'downloading';
   jobs[jobId].updatedAt = Date.now();
 
-  jobQueue = jobQueue.filter((id) => id !== jobId);
+  // Удаляем jobId из очереди
+  const index = jobQueue.indexOf(jobId);
+  if (index !== -1) jobQueue.splice(index, 1);
+
   updateQueuePositions();
 }
 
