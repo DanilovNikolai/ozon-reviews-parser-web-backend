@@ -10,6 +10,7 @@ const {
   finishJob,
   canStartNewJob,
   updateQueuePositions,
+  jobQueue,
 } = require('./jobManager');
 const { processProduct } = require('./processProduct');
 
@@ -30,4 +31,5 @@ module.exports = {
   canStartNewJob,
   processProduct,
   updateQueuePositions,
+  jobQueue,
 };
