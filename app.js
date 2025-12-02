@@ -26,6 +26,12 @@ async function runJob(jobId, { s3InputFileUrl, mode }) {
   const job = getJob(jobId);
   if (!job) return;
 
+  // если к моменту запуска задача уже отменена - просто выходим
+  if (job.status === 'cancelled' || job.cancelRequested) {
+    logWithCapture(`⏹ [Процесс ${jobId}] Задача была отменена до запуска, пропускаем`);
+    return;
+  }
+
   let allResults = [];
   let s3OutputUrl = null;
   let errorMessage = null;

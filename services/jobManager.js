@@ -51,7 +51,7 @@ function getJob(jobId) {
   return jobs[jobId] || null;
 }
 
-// Обновление позиций
+// Обновление позиций в очереди
 function updateQueuePositions() {
   jobQueue.forEach((id, index) => {
     const job = jobs[id];
@@ -61,7 +61,7 @@ function updateQueuePositions() {
     }
   });
 
-  // активная задача всегда позиция 0
+  // активная задача всегда в начале
   if (activeJobId && jobs[activeJobId]) {
     jobs[activeJobId].queuePosition = 0;
     jobs[activeJobId].humanQueuePosition = 0;
@@ -70,27 +70,59 @@ function updateQueuePositions() {
 
 // Запуск job
 function startJob(jobId) {
+  const job = jobs[jobId];
+  if (!job) return;
+
   activeJobId = jobId;
+  job.status = 'downloading';
+  job.updatedAt = Date.now();
 
-  jobs[jobId].status = 'downloading';
-  jobs[jobId].updatedAt = Date.now();
-
-  // Удаляем jobId из очереди
   const index = jobQueue.indexOf(jobId);
   if (index !== -1) jobQueue.splice(index, 1);
 
   updateQueuePositions();
 }
 
-// Завершение job
-async function finishJob(jobId, runJobFn) {
+// Завершение job и запуск следующей
+function finishJob(jobId, runJobFn) {
   activeJobId = null;
   updateQueuePositions();
 
-  if (jobQueue.length > 0) {
-    const nextId = jobQueue[0];
-    setTimeout(() => runJobFn(nextId), 200);
+  if (jobQueue.length === 0) {
+    return;
   }
+
+  const nextId = jobQueue[0];
+
+  setTimeout(() => {
+    const nextJob = getJob(nextId);
+    if (!nextJob) {
+      // на всякий случай чистим очередь
+      const idx = jobQueue.indexOf(nextId);
+      if (idx !== -1) jobQueue.splice(idx, 1);
+      updateQueuePositions();
+      if (jobQueue.length > 0) {
+        finishJob(nextId, runJobFn);
+      }
+      return;
+    }
+
+    // если уже отменён — пропускаем и берём следующего
+    if (nextJob.status === 'cancelled' || nextJob.cancelRequested) {
+      const idx = jobQueue.indexOf(nextId);
+      if (idx !== -1) jobQueue.splice(idx, 1);
+      updateQueuePositions();
+
+      if (jobQueue.length > 0) {
+        finishJob(nextId, runJobFn);
+      }
+      return;
+    }
+
+    // обычный запуск
+    startJob(nextId);
+    runJobFn(nextId);
+  }, 200);
 }
 
 function canStartNewJob() {
