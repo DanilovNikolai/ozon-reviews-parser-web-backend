@@ -97,4 +97,5 @@ module.exports = {
   startJob,
   finishJob,
   canStartNewJob,
+  updateQueuePositions,
 };
