@@ -14,6 +14,7 @@ const {
   canStartNewJob,
   processProduct,
   updateQueuePositions,
+  jobQueue,
 } = require('./services');
 const { logWithCapture, warnWithCapture, errorWithCapture } = require('./utils');
 
