@@ -23,6 +23,7 @@ function createJob({ s3InputFileUrl, mode }) {
 
     createdAt: now,
     updatedAt: now,
+    startedAt: null,
 
     totalUrls: 0,
     processedUrls: 0,
@@ -75,6 +76,7 @@ function startJob(jobId) {
 
   activeJobId = jobId;
   job.status = 'downloading';
+  job.startedAt = Date.now();
   job.updatedAt = Date.now();
 
   const index = jobQueue.indexOf(jobId);
