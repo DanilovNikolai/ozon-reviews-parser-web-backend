@@ -9,7 +9,11 @@ const {
   writeExcelReviews,
   createJob,
   getJob,
+  startJob,
+  finishJob,
+  canStartNewJob,
   processProduct,
+  updateQueuePositions,
 } = require('./services');
 const { logWithCapture, warnWithCapture, errorWithCapture } = require('./utils');
 

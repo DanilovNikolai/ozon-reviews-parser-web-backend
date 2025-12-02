@@ -3,7 +3,14 @@ const { uploadToS3, uploadScreenshot, downloadFromS3 } = require('./s3');
 const { saveCookies, closeBrowser } = require('./browserCleanup');
 const { calculateProductHash } = require('./calculateProductHash');
 const { updateJobStatus } = require('./updateJobStatus');
-const { createJob, getJob } = require('./jobManager');
+const {
+  createJob,
+  getJob,
+  startJob,
+  finishJob,
+  canStartNewJob,
+  updateQueuePositions,
+} = require('./jobManager');
 const { processProduct } = require('./processProduct');
 
 module.exports = {
@@ -18,5 +25,9 @@ module.exports = {
   updateJobStatus,
   createJob,
   getJob,
+  startJob,
+  finishJob,
+  canStartNewJob,
   processProduct,
+  updateQueuePositions,
 };
