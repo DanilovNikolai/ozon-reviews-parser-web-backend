@@ -13,8 +13,7 @@ const {
   finishJob,
   canStartNewJob,
   processProduct,
-  updateQueuePositions,
-  jobQueue,
+  cancelJob,
 } = require('./services');
 const { logWithCapture, warnWithCapture, errorWithCapture } = require('./utils');
 
@@ -143,36 +142,14 @@ app.get('/parse/:jobId/status', (req, res) => {
 
 app.post('/parse/:jobId/cancel', (req, res) => {
   const jobId = req.params.jobId;
-  const job = getJob(jobId);
 
-  if (!job) {
-    return res.json({ success: false, error: 'Задача не найдена' });
+  const ok = cancelJob(jobId);
+
+  if (!ok) {
+    return res.json({ success: false, error: 'Не удалось отменить задачу' });
   }
 
-  // --- если задача в очереди ---
-  if (job.status === 'queued') {
-    const index = jobQueue.indexOf(jobId);
-    if (index !== -1) jobQueue.splice(index, 1);
-
-    job.status = 'cancelled';
-    job.updatedAt = Date.now();
-
-    updateQueuePositions();
-
-    return res.json({
-      success: true,
-      message: 'Задача в очереди отменена',
-    });
-  }
-
-  // --- если активная ---
-  job.cancelRequested = true;
-  job.updatedAt = Date.now();
-
-  return res.json({
-    success: true,
-    message: 'Запрошена отмена активной задачи',
-  });
+  return res.json({ success: true, message: 'Отменено' });
 });
 
 // СТАРТ СЕРВЕРА

@@ -11,6 +11,7 @@ const {
   canStartNewJob,
   updateQueuePositions,
   jobQueue,
+  cancelJob,
 } = require('./jobManager');
 const { processProduct } = require('./processProduct');
 
@@ -32,4 +33,5 @@ module.exports = {
   processProduct,
   updateQueuePositions,
   jobQueue,
+  cancelJob,
 };

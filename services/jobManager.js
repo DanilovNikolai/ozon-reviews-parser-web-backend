@@ -127,6 +127,34 @@ function finishJob(jobId, runJobFn) {
   }, 200);
 }
 
+function cancelJob(jobId) {
+  const job = jobs[jobId];
+  if (!job) return false;
+
+  // 1) Если в очереди — просто удалить
+  const idx = jobQueue.indexOf(jobId);
+  if (idx !== -1) {
+    jobQueue.splice(idx, 1);
+    job.status = 'cancelled';
+    job.cancelRequested = true;
+    job.updatedAt = Date.now();
+    updateQueuePositions();
+    return true;
+  }
+
+  // 2) Если активная
+  if (activeJobId === jobId) {
+    job.status = 'cancelled';
+    job.cancelRequested = true;
+    job.updatedAt = Date.now();
+    activeJobId = null;
+    updateQueuePositions();
+    return true;
+  }
+
+  return false;
+}
+
 function canStartNewJob() {
   return activeJobId === null;
 }
@@ -141,4 +169,5 @@ module.exports = {
   finishJob,
   canStartNewJob,
   updateQueuePositions,
+  cancelJob,
 };
