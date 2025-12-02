@@ -99,44 +99,67 @@ async function runJob(jobId, { s3InputFileUrl, mode }) {
 app.post('/parse', async (req, res) => {
   const { s3InputFileUrl, mode } = req.body;
 
-  if (!s3InputFileUrl) {
-    return res.status(400).json({ success: false, error: 'Не передан s3InputFileUrl' });
-  }
+  if (!s3InputFileUrl) return res.status(400).json({ success: false, error: 'Нет s3InputFileUrl' });
 
-  // Создаём новую задачу
+  // Создаём новую задачу (статус: queued)
   const job = createJob({ s3InputFileUrl, mode });
-
   logWithCapture(`🧩 Создана задача ${job.id}`);
 
-  // Запуск фоновой задачи
-  (async () => {
-    await runJob(job.id, { s3InputFileUrl, mode });
-  })();
+  // Если нет активного — запускаем сразу
+  if (canStartNewJob()) {
+    startJob(job.id);
+
+    (async () => {
+      await runJob(job.id, { s3InputFileUrl, mode });
+      await finishJob(job.id, (nextId) =>
+        runJob(nextId, {
+          s3InputFileUrl: getJob(nextId).s3InputFileUrl,
+          mode: getJob(nextId).mode,
+        })
+      );
+    })();
+  }
 
   return res.json({ success: true, jobId: job.id });
 });
 
 app.get('/parse/:jobId/status', (req, res) => {
   const job = getJob(req.params.jobId);
-
-  if (!job) {
-    return res.status(404).json({ success: false, error: 'Задача не найдена' });
-  }
+  if (!job) return res.status(404).json({ success: false, error: 'Задача не найдена' });
 
   return res.json({ success: true, ...job });
 });
 
 app.post('/parse/:jobId/cancel', (req, res) => {
-  const job = getJob(req.params.jobId);
+  const jobId = req.params.jobId;
+  const job = getJob(jobId);
 
   if (!job) {
     return res.status(404).json({ success: false, error: 'Задача не найдена' });
   }
 
+  // === ЕСЛИ ЗАДАЧА ЕЩЁ В ОЧЕРЕДИ — отменяем мгновенно ===
+  if (job.status === 'queued') {
+    jobQueue = jobQueue.filter((id) => id !== jobId);
+    job.status = 'cancelled';
+    job.updatedAt = Date.now();
+
+    updateQueuePositions();
+
+    return res.json({
+      success: true,
+      message: 'Задача отменена (она была в очереди и не запускалась)',
+    });
+  }
+
+  // === ЕСЛИ ЗАДАЧА УЖЕ РАБОТАЕТ - ставим флаг отмены ===
   job.cancelRequested = true;
   job.updatedAt = Date.now();
 
-  return res.json({ success: true, message: 'Отмена запрошена' });
+  return res.json({
+    success: true,
+    message: 'Отмена запрошена — задача будет остановлена',
+  });
 });
 
 // СТАРТ СЕРВЕРА
