@@ -25,9 +25,9 @@ async function runJob(jobId, { s3InputFileUrl, mode }) {
   const job = getJob(jobId);
   if (!job) return;
 
-  // если к моменту запуска задача уже отменена - просто выходим
-  if (job.status === 'cancelled' || job.cancelRequested) {
-    logWithCapture(`⏹ [Процесс ${jobId}] Задача была отменена до запуска, пропускаем`);
+  // отменено до запуска
+  if (job.cancelRequested || job.status === 'cancelled') {
+    logWithCapture(`⏹ [${jobId}] Задача была отменена до запуска - пропускаем`);
     return;
   }
 
@@ -44,23 +44,23 @@ async function runJob(jobId, { s3InputFileUrl, mode }) {
 
     // === 2) Чтение ссылок из Excel ===
     const urls = await readExcelLinks(localInputPath);
+
     job.totalUrls = urls.length;
     job.processedUrls = 0;
     job.status = 'parsing';
     job.updatedAt = Date.now();
 
-    logWithCapture(`🔗 [Процесс ${jobId}] Найдено ссылок: ${urls.length}`);
+    logWithCapture(`🔗 [${jobId}] Найдено ссылок: ${urls.length}`);
 
     // === 3) Обработка каждой ссылки ===
     for (const url of urls) {
       if (job.cancelRequested) {
         job.status = 'cancelled';
         job.updatedAt = Date.now();
-        return;
+        break;
       }
 
       const result = await processProduct({ url, job, mode, parseReviewsFromUrl });
-
       allResults.push(result);
 
       if (result.errorOccurred && result.error !== 'cancelled') {
@@ -69,7 +69,7 @@ async function runJob(jobId, { s3InputFileUrl, mode }) {
       }
     }
   } catch (err) {
-    errorWithCapture(`❌ [Процесс ${jobId}] Глобальная ошибка: ${err}`);
+    errorWithCapture(`❌ [${jobId}] Глобальная ошибка: ${err}`);
     if (!errorMessage) errorMessage = err.message;
   }
 
@@ -77,38 +77,43 @@ async function runJob(jobId, { s3InputFileUrl, mode }) {
   try {
     s3OutputUrl = await writeExcelReviews(allResults);
   } catch (err) {
-    errorWithCapture(`❌ Ошибка генерации Excel: ${err.message}`);
+    errorWithCapture(`❌ [${jobId}] Excel ошибка: ${err.message}`);
     if (!errorMessage) errorMessage = err.message;
   }
 
   // === 5) Загрузка скриншотов ===
   const screenshots = ['/tmp/debug_hash.png', '/tmp/debug_reviews.png'];
-
   for (const file of screenshots) {
     try {
       if (fs.existsSync(file)) {
         await uploadScreenshot(file);
-        logWithCapture(`[Процесс ${jobId}] 📤 Скриншот загружен: ${file}`);
+        logWithCapture(`[${jobId}] 📤 Скриншот загружен`);
       }
     } catch (err) {
-      warnWithCapture(`[Процесс ${jobId}] ⚠ Ошибка загрузки скриншота: ${err.message}`);
+      warnWithCapture(`[${jobId}] ⚠ Ошибка загрузки скриншота: ${err.message}`);
     }
   }
 
   // === 6) Завершение ===
   job.s3OutputUrl = s3OutputUrl || null;
-  job.error = errorMessage || null;
-  job.status = errorMessage ? 'error' : 'completed';
-  job.updatedAt = Date.now();
 
-  logWithCapture(`✔ [Процесс ${jobId}] Завершено: ${job.status}`);
+  if (job.cancelRequested) {
+    job.status = 'cancelled';
+  } else if (errorMessage) {
+    job.status = 'error';
+    job.error = errorMessage;
+  } else {
+    job.status = 'completed';
+  }
+
+  job.updatedAt = Date.now();
+  logWithCapture(`✔ [${jobId}] Завершено: ${job.status}`);
 }
 
 // ====================== API ======================
 
 app.post('/parse', async (req, res) => {
   const { s3InputFileUrl, mode } = req.body;
-
   if (!s3InputFileUrl) return res.status(400).json({ success: false, error: 'Нет s3InputFileUrl' });
 
   // Создаём новую задачу (статус: queued)
@@ -136,20 +141,18 @@ app.post('/parse', async (req, res) => {
 app.get('/parse/:jobId/status', (req, res) => {
   const job = getJob(req.params.jobId);
   if (!job) return res.status(404).json({ success: false, error: 'Задача не найдена' });
-
   return res.json({ success: true, ...job });
 });
 
 app.post('/parse/:jobId/cancel', (req, res) => {
   const jobId = req.params.jobId;
-
   const ok = cancelJob(jobId);
 
   if (!ok) {
     return res.json({ success: false, error: 'Не удалось отменить задачу' });
   }
 
-  return res.json({ success: true, message: 'Отменено' });
+  return res.json({ success: true, message: 'Отмена запрошена' });
 });
 
 // СТАРТ СЕРВЕРА
