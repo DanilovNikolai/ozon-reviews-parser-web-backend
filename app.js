@@ -115,19 +115,19 @@ app.post('/parse', async (req, res) => {
   const job = createJob({ s3InputFileUrl, mode });
   logWithCapture(`🧩 Создана задача ${job.id}`);
 
-  // Если нет активного — запускаем сразу
+  // Если нет активной — запускаем цепочку
   if (canStartNewJob()) {
+    const runJobFn = (id) => {
+      const j = getJob(id);
+      if (!j) return Promise.resolve();
+      return runJob(id, { s3InputFileUrl: j.s3InputFileUrl, mode: j.mode });
+    };
+
     startJob(job.id);
 
-    (async () => {
-      await runJob(job.id, { s3InputFileUrl, mode });
-      await finishJob(job.id, (nextId) =>
-        runJob(nextId, {
-          s3InputFileUrl: getJob(nextId).s3InputFileUrl,
-          mode: getJob(nextId).mode,
-        })
-      );
-    })();
+    runJobFn(job.id).then(() => {
+      finishJob(job.id, runJobFn);
+    });
   }
 
   return res.json({ success: true, jobId: job.id });
