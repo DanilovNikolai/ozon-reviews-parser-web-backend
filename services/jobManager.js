@@ -75,10 +75,13 @@ function startJob(jobId) {
   if (!job) return;
 
   activeJobId = jobId;
-  job.status = 'downloading';
-  job.startedAt = Date.now();
-  job.updatedAt = Date.now();
 
+  const now = Date.now();
+  job.status = 'downloading';
+  job.startedAt = job.startedAt || now;
+  job.updatedAt = now;
+
+  // Удаляем из очереди, если там был
   const index = jobQueue.indexOf(jobId);
   if (index !== -1) jobQueue.splice(index, 1);
 
@@ -87,51 +90,49 @@ function startJob(jobId) {
 
 // Завершение job и запуск следующей
 function finishJob(jobId, runJobFn) {
+  // Текущая активная задача завершилась
   activeJobId = null;
   updateQueuePositions();
 
-  if (jobQueue.length === 0) {
-    return;
-  }
+  const startNext = () => {
+    if (activeJobId || jobQueue.length === 0) return;
 
-  const nextId = jobQueue[0];
-
-  setTimeout(() => {
+    const nextId = jobQueue[0];
     const nextJob = getJob(nextId);
+
+    // Если задачи нет — выкидываем и пробуем следующую
     if (!nextJob) {
-      // на всякий случай чистим очередь
-      const idx = jobQueue.indexOf(nextId);
-      if (idx !== -1) jobQueue.splice(idx, 1);
+      jobQueue.shift();
       updateQueuePositions();
-      if (jobQueue.length > 0) {
-        finishJob(nextId, runJobFn);
-      }
-      return;
+      return startNext();
     }
 
-    // если уже отменён — пропускаем и берём следующего
+    // Если уже отменена — тоже выкидываем
     if (nextJob.status === 'cancelled' || nextJob.cancelRequested) {
-      const idx = jobQueue.indexOf(nextId);
-      if (idx !== -1) jobQueue.splice(idx, 1);
+      jobQueue.shift();
       updateQueuePositions();
-
-      if (jobQueue.length > 0) {
-        finishJob(nextId, runJobFn);
-      }
-      return;
+      return startNext();
     }
 
-    // обычный запуск
+    // Обычный запуск
     startJob(nextId);
-    runJobFn(nextId);
-  }, 200);
+
+    // После завершения следующей задачи снова вызовем finishJob
+    runJobFn(nextId).then(() => {
+      finishJob(nextId, runJobFn);
+    });
+  };
+
+  // Небольшая пауза перед запуском следующей
+  setTimeout(startNext, 200);
 }
 
+// Отмена задачи
 function cancelJob(jobId) {
   const job = jobs[jobId];
   if (!job) return false;
 
-  // 1) Если в очереди — просто удалить
+  // 1) Если в очереди — просто удалить и отменить
   const idx = jobQueue.indexOf(jobId);
   if (idx !== -1) {
     jobQueue.splice(idx, 1);
@@ -142,19 +143,19 @@ function cancelJob(jobId) {
     return true;
   }
 
-  // 2) Если активная
+  // 2) Если активная — не трогаем activeJobId (пусть runJob завершится сам)
   if (activeJobId === jobId) {
-    job.status = 'cancelled';
     job.cancelRequested = true;
+    job.status = 'cancelled';
     job.updatedAt = Date.now();
-    activeJobId = null;
-    updateQueuePositions();
+    // activeJobId сбросится в finishJob, когда runJob завершится
     return true;
   }
 
   return false;
 }
 
+// Можно ли запускать новую задачу прямо сейчас
 function canStartNewJob() {
   return activeJobId === null;
 }
