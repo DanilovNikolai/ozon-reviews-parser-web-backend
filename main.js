@@ -143,7 +143,7 @@ async function parseReviewsFromUrl(url, mode = '3', onPartialSave = () => {}, jo
       // ===== Проверка отмены =====
       if (jobRef?.cancelRequested) {
         logWithCapture('⛔ Отмена! Принудительно останавливаем парсер...');
-        throw new Error('Парсинг отменён пользователем');
+        break;
       }
 
       // Обновление статуса текущей страницы для фронта
@@ -237,6 +237,19 @@ async function parseReviewsFromUrl(url, mode = '3', onPartialSave = () => {}, jo
       await page.screenshot({ path: CONFIG.lastScreenshotPath, fullPage: true });
     } catch {}
 
+    if (jobRef?.cancelRequested && err.message === 'Парсинг отменён пользователем') {
+      warnWithCapture('⛔ Парсер остановлен пользователем');
+      return {
+        productName: productNameMatch,
+        totalCount: collectedTotal,
+        reviews: allReviews.map((r, i) => ({
+          ...r,
+          url,
+          ordinal: `${i + 1}/${totalReviewsCount || allReviews.length}`,
+        })),
+        logs: [...getLogBuffer()],
+      };
+    }
     errorWithCapture('❌ Ошибка при парсинге:', err.message);
     throw new Error(err.message);
   } finally {

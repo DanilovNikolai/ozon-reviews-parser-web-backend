@@ -8,7 +8,7 @@ async function processProduct({ url, job, mode, parseReviewsFromUrl }) {
   job.collectedReviews = 0;
   job.updatedAt = Date.now();
 
-  logWithCapture(`▶ [Процесс ${job.id}] Парсинг товара: ${url}`);
+  logWithCapture(`▶ [${job.id}] Парсинг товара: ${url}`);
 
   try {
     const result = await parseReviewsFromUrl(
@@ -19,7 +19,7 @@ async function processProduct({ url, job, mode, parseReviewsFromUrl }) {
         job.collectedReviews += partial.reviews.length;
         job.updatedAt = Date.now();
         logWithCapture(
-          `[Процесс ${job.id}] Промежуточное сохранение: ${partial.reviews.length} отзывов`
+          `[${job.id}] Промежуточное сохранение: ${partial.reviews.length} отзывов`
         );
       },
       job
@@ -57,7 +57,7 @@ async function processProduct({ url, job, mode, parseReviewsFromUrl }) {
     }
 
     // Обработка ошибки при парсинге
-    errorWithCapture(`❌ [Процесс ${job.id}] Ошибка при парсинге товара ${url}: ${err.message}`);
+    errorWithCapture(`❌ [${job.id}] Ошибка при парсинге товара ${url}: ${err.message}`);
 
     return {
       reviews: [],
