@@ -5,7 +5,7 @@ const { logWithCapture, getLogBuffer, clearLogBuffer, removeDuplicates } = requi
 
 // === Читает Excel-файл со списком ссылок на товары ===
 async function readExcelLinks(filePath) {
-  logWithCapture(`📥 Читаю Excel: ${filePath}`);
+  logWithCapture(`📥 Чтение Excel: ${filePath}`);
 
   if (!fs.existsSync(filePath)) {
     throw new Error(`Файл не найден: ${filePath}`);
@@ -86,10 +86,6 @@ async function writeExcelReviews(allResults) {
 
   // === удаляем дубликаты из rawRows ===
   const { uniqueRows, duplicateCount } = removeDuplicates(rawRows, [], false);
-
-  logWithCapture(`🧹 Удалено дубликатов отзывов: ${duplicateCount}`);
-  logWithCapture(`📦 Уникальных отзывов осталось: ${uniqueRows.length}`);
-
   const mainSheet = XLSX.utils.aoa_to_sheet([headers, ...uniqueRows]);
   XLSX.utils.book_append_sheet(wb, mainSheet, MAIN_SHEET);
 
@@ -132,7 +128,7 @@ async function writeExcelReviews(allResults) {
   const url = await uploadToS3(buffer, 'downloaded_files', filename);
 
   logWithCapture(`📤 Excel загружен на S3: ${url}`);
-  logWithCapture(`📦 Уникальных отзывов добавлено в файл: ${uniqueRows.length}`);
+  logWithCapture(`💾 Уникальных отзывов сохранено в Excel: ${uniqueRows.length}`);
 
   clearLogBuffer();
 
