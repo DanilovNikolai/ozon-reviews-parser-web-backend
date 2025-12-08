@@ -1,10 +1,10 @@
-// helpers/launchBrowser.js
 const fs = require('fs');
 const path = require('path');
 const puppeteer = require('puppeteer-extra');
 const StealthPlugin = require('puppeteer-extra-plugin-stealth');
 const { CONFIG } = require('../config');
 const { logWithCapture, warnWithCapture } = require('../utils');
+const { isActiveLock } = require('../utils/lockManager');
 
 puppeteer.use(StealthPlugin());
 
@@ -123,8 +123,10 @@ async function launchBrowserWithCookies() {
     warnWithCapture('⚠ cookies.json not found — starting without cookies');
   }
 
-  // Проверка валидности сессии
-  await validateSession(page);
+  // Если это обновление куков — НЕ чистим cookies, даже если антибот
+  if (!isActiveLock('cookies')) {
+    await validateSession(page);
+  }
 
   // Проверка IP
   try {

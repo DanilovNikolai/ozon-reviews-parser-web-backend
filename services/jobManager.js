@@ -1,7 +1,12 @@
+const { createLock, removeLock } = require('../utils/lockManager');
+
 const jobs = {};
 
 let activeJobId = null;
 const jobQueue = [];
+
+const PARSER_LOCK_NAME = 'parser';
+const PARSER_LOCK_TTL_MIN = Number(process.env.PARSER_LOCK_TTL_MIN || 120);
 
 // Уникальный ID
 function createJobId() {
@@ -72,6 +77,11 @@ function startJob(jobId) {
   const job = jobs[jobId];
   if (!job) return;
 
+  // если до этого не было активной задачи — это старт цепочки → ставим parser.lock
+  if (!activeJobId) {
+    createLock(PARSER_LOCK_NAME, PARSER_LOCK_TTL_MIN, { type: 'parsing' });
+  }
+
   activeJobId = jobId;
   const now = Date.now();
 
@@ -88,11 +98,19 @@ function startJob(jobId) {
 
 // Завершение job и запуск следующей
 function finishJob(jobId, runJobFn) {
+  // текущая активная задача завершена
   activeJobId = null;
   updateQueuePositions();
 
   const startNext = () => {
-    if (activeJobId || jobQueue.length === 0) return;
+    // если задач больше нет — снимаем parser.lock
+    if (jobQueue.length === 0) {
+      removeLock(PARSER_LOCK_NAME);
+      return;
+    }
+
+    // защита от гонок — если внезапно уже кто-то активен
+    if (activeJobId) return;
 
     const nextId = jobQueue[0];
     const nextJob = getJob(nextId);
@@ -111,9 +129,8 @@ function finishJob(jobId, runJobFn) {
       return startNext();
     }
 
-    // Обычный запуск
+    // Обычный запуск следующей задачи
     startJob(nextId);
-    // После завершения следующей задачи снова вызовем finishJob
     runJobFn(nextId).then(() => finishJob(nextId, runJobFn));
   };
 
@@ -137,7 +154,7 @@ function cancelJob(jobId) {
     return true;
   }
 
-  // 2) Если задача активная — НЕ завершаем сразу
+  // 2) Если задача активная — НЕ завершаем сразу, даём runJob() доработать
   if (activeJobId === jobId) {
     job.cancelRequested = true;
     job.status = 'cancelling';
