@@ -10,7 +10,9 @@ const COOKIE_LOCK = 'cookies';
 
 async function refreshCookies() {
   try {
-    logWithCapture('🔄 [COOKIE REFRESH] Старт обновления куков...');
+    logWithCapture(
+      `🔄 [COOKIE REFRESH] Старт обновления куков... (${new Date().toLocaleString('ru-RU')})`
+    );
 
     // 1 — Парсер активен? Пропускаем
     if (isActiveLock(PARSER_LOCK)) {
@@ -63,11 +65,13 @@ async function refreshCookies() {
 
     // 7 — УСПЕШНО → сохраняем свежие куки
     await saveCookies(page);
-    logWithCapture('✅ [COOKIE REFRESH] Куки обновлены');
+    logWithCapture(`✅ [COOKIE REFRESH] Куки обновлены (${new Date().toLocaleString('ru-RU')})`);
 
     await closeBrowser(browser);
   } catch (err) {
-    errorWithCapture(`❌ [COOKIE REFRESH] Ошибка: ${err.message}`);
+    errorWithCapture(
+      `❌ [COOKIE REFRESH] Ошибка: ${err.message} (${new Date().toLocaleString('ru-RU')})`
+    );
   } finally {
     removeLock(COOKIE_LOCK);
   }
