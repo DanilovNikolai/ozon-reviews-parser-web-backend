@@ -2,7 +2,14 @@ const { launchBrowserWithCookies } = require('../helpers');
 const { saveCookies, closeBrowser } = require('../services');
 const { logWithCapture, warnWithCapture, errorWithCapture } = require('../utils');
 const { createLock, isActiveLock, removeLock } = require('../utils/lockManager');
-const { humanMouse, humanScroll, humanKeyboard, autoScroll, sleep } = require('../utils');
+const {
+  humanMouse,
+  humanScroll,
+  humanKeyboard,
+  autoScroll,
+  sleep,
+  getFormattedTimestamp,
+} = require('../utils');
 
 const COOKIE_TTL_MIN = Number(process.env.COOKIE_LOCK_TTL_MIN || 10);
 const PARSER_LOCK = 'parser';
@@ -10,19 +17,21 @@ const COOKIE_LOCK = 'cookies';
 
 async function refreshCookies() {
   try {
-    logWithCapture(
-      `🔄 [COOKIE REFRESH] Старт обновления куков... (${new Date().toLocaleString('ru-RU')})`
-    );
+    logWithCapture(`🔄 [${getFormattedTimestamp()}][COOKIE REFRESH] Старт обновления куков...`);
 
     // 1 — Парсер активен? Пропускаем
     if (isActiveLock(PARSER_LOCK)) {
-      logWithCapture('⏳ [COOKIE REFRESH] Парсер работает → обновление пропущено.');
+      logWithCapture(
+        `⏳ [${getFormattedTimestamp()}][COOKIE REFRESH] Парсер работает → обновление пропущено.`
+      );
       return;
     }
 
     // 2 — Уже идёт обновление?
     if (isActiveLock(COOKIE_LOCK)) {
-      logWithCapture('⏳ [COOKIE REFRESH] cookies.lock активен → пропуск');
+      logWithCapture(
+        `⏳ [${getFormattedTimestamp()}][COOKIE REFRESH] cookies.lock активен → пропуск`
+      );
       return;
     }
 
@@ -31,7 +40,7 @@ async function refreshCookies() {
     // 3 — Запускаем браузер с ТВОЕЙ логикой антибота
     const { browser, page } = await launchBrowserWithCookies();
 
-    logWithCapture('🌍 [COOKIE REFRESH] Переходим на профиль…');
+    logWithCapture(`🌍 [${getFormattedTimestamp()}][COOKIE REFRESH] Переходим на профиль…`);
 
     // Важнее, чем главная страница
     await page.goto('https://www.ozon.ru/my/main', {
@@ -42,7 +51,9 @@ async function refreshCookies() {
     // 4 — Проверка на антибот
     const url1 = page.url();
     if (url1.includes('antibot') || url1.includes('captcha')) {
-      warnWithCapture('⚠ [COOKIE REFRESH] антибот → пробуем ещё раз через 10 сек…');
+      warnWithCapture(
+        `⚠ [${getFormattedTimestamp()}][COOKIE REFRESH] антибот → пробуем ещё раз через 10 сек…`
+      );
       await sleep(10000);
     }
 
@@ -65,13 +76,11 @@ async function refreshCookies() {
 
     // 7 — УСПЕШНО → сохраняем свежие куки
     await saveCookies(page);
-    logWithCapture(`✅ [COOKIE REFRESH] Куки обновлены (${new Date().toLocaleString('ru-RU')})`);
+    logWithCapture(`✅ [${getFormattedTimestamp()}][COOKIE REFRESH] Куки обновлены!`);
 
     await closeBrowser(browser);
   } catch (err) {
-    errorWithCapture(
-      `❌ [COOKIE REFRESH] Ошибка: ${err.message} (${new Date().toLocaleString('ru-RU')})`
-    );
+    errorWithCapture(`❌ [${getFormattedTimestamp()}][COOKIE REFRESH] Ошибка: ${err.message}`);
   } finally {
     removeLock(COOKIE_LOCK);
   }
