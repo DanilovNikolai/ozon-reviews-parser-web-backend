@@ -17,12 +17,12 @@ const COOKIE_LOCK = 'cookies';
 
 async function refreshCookies() {
   try {
-    logWithCapture(`🔄 [${getFormattedTimestamp()}][COOKIE REFRESH] Старт обновления куков...`);
+    logWithCapture(`🔄 ${getFormattedTimestamp()}[COOKIE REFRESH] Старт обновления куков...`);
 
     // 1 — Парсер активен? Пропускаем
     if (isActiveLock(PARSER_LOCK)) {
       logWithCapture(
-        `⏳ [${getFormattedTimestamp()}][COOKIE REFRESH] Парсер работает → обновление пропущено.`
+        `⏳ ${getFormattedTimestamp()}[COOKIE REFRESH] Парсер работает → обновление пропущено.`
       );
       return;
     }
@@ -30,7 +30,7 @@ async function refreshCookies() {
     // 2 — Уже идёт обновление?
     if (isActiveLock(COOKIE_LOCK)) {
       logWithCapture(
-        `⏳ [${getFormattedTimestamp()}][COOKIE REFRESH] cookies.lock активен → пропуск`
+        `⏳ ${getFormattedTimestamp()}[COOKIE REFRESH] cookies.lock активен → пропуск`
       );
       return;
     }
@@ -40,7 +40,7 @@ async function refreshCookies() {
     // 3 — Запускаем браузер с ТВОЕЙ логикой антибота
     const { browser, page } = await launchBrowserWithCookies();
 
-    logWithCapture(`🌍 [${getFormattedTimestamp()}][COOKIE REFRESH] Переходим на профиль…`);
+    logWithCapture(`🌍 ${getFormattedTimestamp()}[COOKIE REFRESH] Переходим на профиль…`);
 
     // Важнее, чем главная страница
     await page.goto('https://www.ozon.ru/my/main', {
@@ -52,7 +52,7 @@ async function refreshCookies() {
     const url1 = page.url();
     if (url1.includes('antibot') || url1.includes('captcha')) {
       warnWithCapture(
-        `⚠ [${getFormattedTimestamp()}][COOKIE REFRESH] антибот → пробуем ещё раз через 10 сек…`
+        `⚠ ${getFormattedTimestamp()}[COOKIE REFRESH] антибот → пробуем ещё раз через 10 сек…`
       );
       await sleep(10000);
     }
@@ -76,11 +76,11 @@ async function refreshCookies() {
 
     // 7 — УСПЕШНО → сохраняем свежие куки
     await saveCookies(page);
-    logWithCapture(`✅ [${getFormattedTimestamp()}][COOKIE REFRESH] Куки обновлены!`);
+    logWithCapture(`✅ ${getFormattedTimestamp()}[COOKIE REFRESH] Куки обновлены!`);
 
     await closeBrowser(browser);
   } catch (err) {
-    errorWithCapture(`❌ [${getFormattedTimestamp()}][COOKIE REFRESH] Ошибка: ${err.message}`);
+    errorWithCapture(`❌ ${getFormattedTimestamp()}[COOKIE REFRESH] Ошибка: ${err.message}`);
   } finally {
     removeLock(COOKIE_LOCK);
   }
