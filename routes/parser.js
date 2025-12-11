@@ -10,7 +10,7 @@ const {
   cancelJob,
 } = require('../services');
 const { logWithCapture } = require('../utils');
-const { runJob } = require('../app');
+const { runJob } = require('../services/jobRunner');
 
 // === Создание задачи ===
 router.post('/', async (req, res) => {
