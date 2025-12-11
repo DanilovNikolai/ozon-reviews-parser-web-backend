@@ -113,3 +113,5 @@ app.use('/parse', parserRoutes);
 app.listen(process.env.PORT || 8080, () => {
   logWithCapture(`🟢 Parser started`);
 });
+
+module.exports = { runJob };
