@@ -1,19 +1,15 @@
 const express = require('express');
 const { parseReviewsFromUrl } = require('./main');
 const fs = require('fs');
+const parserRoutes = require('./routes/parser');
 
 const {
   downloadFromS3,
   uploadScreenshot,
   readExcelLinks,
   writeExcelReviews,
-  createJob,
   getJob,
-  startJob,
-  finishJob,
-  canStartNewJob,
   processProduct,
-  cancelJob,
 } = require('./services');
 const { logWithCapture, warnWithCapture, errorWithCapture } = require('./utils');
 
@@ -25,7 +21,7 @@ async function runJob(jobId, { s3InputFileUrl, mode }) {
   const job = getJob(jobId);
   if (!job) return;
 
-  // отменено до запуска
+  // === Отменено до запуска ===
   if (job.cancelRequested || job.status === 'cancelled') {
     logWithCapture(`⏹ [${jobId}] Задача была отменена до запуска - пропускаем`);
     return;
@@ -110,52 +106,10 @@ async function runJob(jobId, { s3InputFileUrl, mode }) {
   logWithCapture(`✔ [${jobId}] Завершено: ${job.status}`);
 }
 
-// ====================== API ======================
+// === Подключение путей из /routes ===
+app.use('/parse', parserRoutes);
 
-app.post('/parse', async (req, res) => {
-  const { s3InputFileUrl, mode } = req.body;
-  if (!s3InputFileUrl) return res.status(400).json({ success: false, error: 'Нет s3InputFileUrl' });
-
-  // Создаём новую задачу (статус: queued)
-  const job = createJob({ s3InputFileUrl, mode });
-  logWithCapture(`🧩 Создана задача ${job.id}`);
-
-  // Если нет активной — запускаем цепочку
-  if (canStartNewJob()) {
-    const runJobFn = (id) => {
-      const j = getJob(id);
-      if (!j) return Promise.resolve();
-      return runJob(id, { s3InputFileUrl: j.s3InputFileUrl, mode: j.mode });
-    };
-
-    startJob(job.id);
-
-    runJobFn(job.id).then(() => {
-      finishJob(job.id, runJobFn);
-    });
-  }
-
-  return res.json({ success: true, jobId: job.id });
-});
-
-app.get('/parse/:jobId/status', (req, res) => {
-  const job = getJob(req.params.jobId);
-  if (!job) return res.status(404).json({ success: false, error: 'Задача не найдена' });
-  return res.json({ success: true, ...job });
-});
-
-app.post('/parse/:jobId/cancel', (req, res) => {
-  const jobId = req.params.jobId;
-  const ok = cancelJob(jobId);
-
-  if (!ok) {
-    return res.json({ success: false, error: 'Не удалось отменить задачу' });
-  }
-
-  return res.json({ success: true, message: 'Отмена запрошена' });
-});
-
-// СТАРТ СЕРВЕРА
+// === СТАРТ СЕРВЕРА ===
 app.listen(process.env.PORT || 8080, () => {
   logWithCapture(`🟢 Parser started`);
 });
