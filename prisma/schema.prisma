@@ -1,0 +1,51 @@
+model User {
+  id                    Int       @id @default(autoincrement())
+  email                 String    @unique
+  passwordHash          String
+  role                  Role      @default(USER)
+  isActive              Boolean   @default(true)
+  plan                  Plan      @default(FREE)
+  monthlyUsageLimit     Int       @default(10)
+  usageCurrentMonth     Int       @default(0)
+  subscriptionExpiresAt DateTime?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  parserJobs ParserJob[]
+}
+
+model ParserJob {
+  id               Int       @id @default(autoincrement())
+  user             User      @relation(fields: [userId], references: [id])
+  userId           Int
+  mode             String
+  s3InputFileUrl   String
+  s3OutputUrl      String?
+  status           JobStatus @default(QUEUED)
+  error            String?
+  totalUrls        Int?
+  collectedReviews Int?
+  createdAt        DateTime  @default(now())
+  startedAt        DateTime?
+  finishedAt       DateTime?
+}
+
+enum Role {
+  USER
+  ADMIN
+}
+
+enum JobStatus {
+  QUEUED
+  DOWNLOADING
+  PARSING
+  COMPLETED
+  CANCELLED
+  ERROR
+}
+
+enum Plan {
+  FREE
+  PAID
+  UNLIMITED
+}
