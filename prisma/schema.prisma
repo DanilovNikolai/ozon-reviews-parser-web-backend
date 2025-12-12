@@ -1,15 +1,20 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
 model User {
-  id                    Int       @id @default(autoincrement())
-  email                 String    @unique
-  passwordHash          String
-  role                  Role      @default(USER)
-  isActive              Boolean   @default(true)
-  plan                  Plan      @default(FREE)
-  monthlyUsageLimit     Int       @default(10)
-  usageCurrentMonth     Int       @default(0)
-  subscriptionExpiresAt DateTime?
-  createdAt             DateTime  @default(now())
-  updatedAt             DateTime  @updatedAt
+  id           Int      @id @default(autoincrement())
+  email        String   @unique
+  passwordHash String
+  role         Role     @default(USER)
+  isActive     Boolean  @default(true)
+  plan         Plan     @default(FREE)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
   parserJobs ParserJob[]
 }
