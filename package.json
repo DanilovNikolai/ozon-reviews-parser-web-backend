@@ -6,8 +6,7 @@
     "start": "node app.js",
     "prisma:push": "prisma db push",
     "prisma:generate": "prisma generate",
-    "prisma:seed": "node prisma/seed.js",
-    "postinstall": "prisma generate"
+    "prisma:seed": "node prisma/seed.js"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.910.0",
