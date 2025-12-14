@@ -1,12 +1,14 @@
 const express = require('express');
 const { logWithCapture } = require('./utils');
 const parserRoutes = require('./routes/parser');
+const authRoutes = require('./routes/auth');
 
 const app = express();
 app.use(express.json({ limit: '10mb' }));
 
-// === Подключение путей из /routes ===
+// === Подключение путей ===
 app.use('/parse', parserRoutes);
+app.use('/auth', authRoutes);
 
 // === СТАРТ СЕРВЕРА ===
 app.listen(process.env.PORT || 8080, () => {
