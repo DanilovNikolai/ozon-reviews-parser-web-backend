@@ -128,7 +128,7 @@ async function parseReviewsFromUrl(url, mode = '3', onPartialSave = () => {}, jo
       totalReviewsCount = getTotalReviewsCountFromTitle(titleText);
       logWithCapture(`📊 Отзывов всего: ${totalReviewsCount}`);
       // Обновление статуса общего количества отзывов для фронта
-      updateJobStatus(jobRef, { totalReviewsCount });
+      updateJobStatus(jobRef, { totalReviewsCount, collectedReviews: 0 });
     } catch {
       warnWithCapture('⚠ Не удалось определить количество отзывов по заголовку');
     }
@@ -191,6 +191,9 @@ async function parseReviewsFromUrl(url, mode = '3', onPartialSave = () => {}, jo
       collectedForSave.push(...reviews);
       collectedTotal += reviews.length;
 
+      if (jobRef.collectedReviews === null) {
+        jobRef.collectedReviews = 0;
+      }
       // Обновление количества собранных отзывов для фронта
       updateJobStatus(jobRef, { collectedReviews: collectedTotal });
 

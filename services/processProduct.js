@@ -16,6 +16,9 @@ async function processProduct({ url, job, mode, parseReviewsFromUrl }) {
       url,
       mode,
       (partial) => {
+        if (job.collectedReviews === null) {
+          job.collectedReviews = 0;
+        }
         job.collectedReviews += partial.reviews.length;
         job.updatedAt = Date.now();
         logWithCapture(`[${job.id}] Промежуточное сохранение: ${partial.reviews.length} отзывов`);
