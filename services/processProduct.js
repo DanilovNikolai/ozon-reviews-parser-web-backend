@@ -5,8 +5,9 @@ const { getLogBuffer, logWithCapture, errorWithCapture } = require('../utils');
 async function processProduct({ url, job, mode, parseReviewsFromUrl }) {
   job.currentUrl = url;
   job.currentPage = 0;
+  job.collectedReviews = null;
+  job.totalReviewsCount = null;
   job.updatedAt = Date.now();
-  let isFirstPartial = true;
 
   logWithCapture(`▶ [${job.id}] Парсинг товара: ${url}`);
 
@@ -15,10 +16,6 @@ async function processProduct({ url, job, mode, parseReviewsFromUrl }) {
       url,
       mode,
       (partial) => {
-        if (isFirstPartial) {
-          job.collectedReviews = 0;
-          isFirstPartial = false;
-        }
         job.collectedReviews += partial.reviews.length;
         job.updatedAt = Date.now();
         logWithCapture(`[${job.id}] Промежуточное сохранение: ${partial.reviews.length} отзывов`);
