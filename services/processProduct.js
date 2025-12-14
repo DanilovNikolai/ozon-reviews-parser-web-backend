@@ -14,15 +14,17 @@ async function processProduct({ url, job, mode, parseReviewsFromUrl }) {
     const result = await parseReviewsFromUrl(
       url,
       mode,
-      // Промежуточное сохранение (для режимов парсинга)
       (partial) => {
         job.collectedReviews += partial.reviews.length;
-        job.collectedReviewsTotal += partial.reviews.length;
         job.updatedAt = Date.now();
         logWithCapture(`[${job.id}] Промежуточное сохранение: ${partial.reviews.length} отзывов`);
       },
       job
     );
+
+    if (Array.isArray(result.reviews)) {
+      job.collectedReviewsTotal += result.reviews.length;
+    }
 
     // Обработка дублирования
     if (result.skipped === true) {
