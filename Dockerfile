@@ -1,7 +1,7 @@
 # Node LTS
 FROM node:20-slim
 
-# 1) deps for Chromium + Xvfb
+# 1) Зависимости для Chromium + Xvfb
 RUN apt-get update && apt-get install -y \
     xvfb xauth \
     ca-certificates curl gnupg fonts-liberation \
@@ -12,15 +12,19 @@ RUN apt-get update && apt-get install -y \
 
 WORKDIR /app
 
-COPY package*.json ./
-RUN npm install
-
+# 2️) Копируем всё (включая prisma/schema.prisma)
 COPY . .
 
-# создаём постоянный профиль chromium
+# 3️) Устанавливаем зависимости
+RUN npm install
+
+# 4️) Генерируем Prisma Client
+RUN npx prisma generate
+
+# 5) создаём постоянный профиль chromium
 RUN mkdir -p /app/chrome-data
 
 EXPOSE 8080
 
-# ВАЖНО: Node становится PID1 → docker logs работает
+# Node — PID1
 CMD ["bash", "-lc", "Xvfb :99 -screen 0 1920x1080x24 & export DISPLAY=:99 && node app.js"]
