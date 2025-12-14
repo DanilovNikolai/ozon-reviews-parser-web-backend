@@ -1,5 +1,6 @@
 const { parseReviewsFromUrl } = require('../main');
 const fs = require('fs');
+const prisma = require('../prisma/prisma-client');
 
 const {
   downloadFromS3,
@@ -41,6 +42,11 @@ async function runJob(jobId, { s3InputFileUrl, mode }) {
     job.processedUrls = 0;
     job.status = 'parsing';
     job.updatedAt = Date.now();
+
+    await updateParserJob(job.dbJobId, {
+      status: 'PARSING',
+      totalUrls: urls.length,
+    });
 
     logWithCapture(`🔗 [${jobId}] Найдено ссылок: ${urls.length}`);
 
@@ -89,16 +95,25 @@ async function runJob(jobId, { s3InputFileUrl, mode }) {
   // === 6) Завершение ===
   job.s3OutputUrl = s3OutputUrl || null;
 
+  let finalStatus = 'COMPLETED';
+
   if (job.cancelRequested) {
-    job.status = 'cancelled';
+    finalStatus = 'CANCELLED';
   } else if (errorMessage) {
-    job.status = 'error';
-    job.error = errorMessage;
-  } else {
-    job.status = 'completed';
+    finalStatus = 'ERROR';
   }
 
+  job.status = finalStatus;
   job.updatedAt = Date.now();
+
+  await updateParserJob(job.dbJobId, {
+    status: finalStatus,
+    s3OutputUrl: s3OutputUrl || null,
+    error: errorMessage,
+    finishedAt: new Date(),
+    collectedReviews: job.collectedReviews || null,
+  });
+
   logWithCapture(`✔ [${jobId}] Завершено: ${job.status}`);
 }
 
