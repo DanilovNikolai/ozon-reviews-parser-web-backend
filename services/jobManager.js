@@ -58,8 +58,10 @@ function createJob({ s3InputFileUrl, mode, dbJobId }) {
     processedUrls: 0,
     currentUrl: null,
     currentPage: 0,
-    collectedReviews: 0,
-    totalReviewsCount: 0,
+    collectedReviews: 0, // Количество собранных отзывов для текущего товара
+    totalReviewsCount: 0, // Общее количество отзывов у текущего товара
+
+    collectedReviewsTotal: 0, // Общая сумма всех собранных отзывов для БД
 
     cancelRequested: false,
     error: null,

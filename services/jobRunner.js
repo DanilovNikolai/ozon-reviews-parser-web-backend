@@ -112,7 +112,7 @@ async function runJob(jobId, { s3InputFileUrl, mode }) {
     s3OutputUrl: s3OutputUrl || null,
     error: errorMessage,
     finishedAt: new Date(),
-    collectedReviews: job.collectedReviews || null,
+    collectedReviews: job.collectedReviewsTotal || null,
   });
 
   logWithCapture(`✔ [${jobId}] Завершено: ${job.status}`);

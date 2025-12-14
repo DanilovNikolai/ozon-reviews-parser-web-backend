@@ -17,10 +17,9 @@ async function processProduct({ url, job, mode, parseReviewsFromUrl }) {
       // Промежуточное сохранение (для режимов парсинга)
       (partial) => {
         job.collectedReviews += partial.reviews.length;
+        job.collectedReviewsTotal += partial.reviews.length;
         job.updatedAt = Date.now();
-        logWithCapture(
-          `[${job.id}] Промежуточное сохранение: ${partial.reviews.length} отзывов`
-        );
+        logWithCapture(`[${job.id}] Промежуточное сохранение: ${partial.reviews.length} отзывов`);
       },
       job
     );
