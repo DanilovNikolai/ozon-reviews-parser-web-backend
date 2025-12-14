@@ -64,7 +64,7 @@ router.post('/', async (req, res) => {
 router.get('/:jobId/status', (req, res) => {
   const job = getJob(req.params.jobId);
   if (!job) return res.status(404).json({ success: false, error: 'Задача не найдена' });
-  return res.json({ success: true, ...job });
+  return res.json({ success: true, ...job, status: job.status?.toLowerCase() });
 });
 
 // === Отмена задачи ===
