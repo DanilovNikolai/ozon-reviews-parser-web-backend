@@ -1,6 +1,7 @@
 const { parseReviewsFromUrl } = require('../main');
 const fs = require('fs');
 const prisma = require('../prisma/prisma-client');
+const { updateParserJob } = require('./parserJobUpdater');
 
 const {
   downloadFromS3,
