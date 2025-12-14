@@ -1,5 +1,7 @@
 const express = require('express');
+const { authMiddleware } = require('../middlewares/auth');
 const router = express.Router();
+const prisma = require('../prisma/prisma-client');
 
 const {
   createJob,
@@ -13,12 +15,32 @@ const { logWithCapture } = require('../utils');
 const { runJob } = require('../services/jobRunner');
 
 // === Создание задачи ===
-router.post('/', async (req, res) => {
+router.post('/', authMiddleware, async (req, res) => {
   const { s3InputFileUrl, mode } = req.body;
-  if (!s3InputFileUrl) return res.status(400).json({ success: false, error: 'Нет s3InputFileUrl' });
+  const userId = req.user.userId;
 
-  const job = createJob({ s3InputFileUrl, mode });
-  logWithCapture(`🧩 Создана задача ${job.id}`);
+  if (!s3InputFileUrl) {
+    return res.status(400).json({ success: false, error: 'Нет s3InputFileUrl' });
+  }
+
+  // 1. Создаём запись в БД
+  const dbJob = await prisma.parserJob.create({
+    data: {
+      userId,
+      mode: mode || '3',
+      s3InputFileUrl,
+      status: 'QUEUED',
+    },
+  });
+
+  // 2. Создаём in-memory job и сохраняем dbJobId
+  const job = createJob({
+    s3InputFileUrl,
+    mode,
+    dbJobId: dbJob.id,
+  });
+
+  logWithCapture(`🧩 Создана задача ${job.id} (db: ${dbJob.id})`);
 
   if (canStartNewJob()) {
     const runJobFn = (id) => {
