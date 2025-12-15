@@ -1,20 +1,30 @@
 const { verifyToken } = require('../utils/jwt');
 
 function authMiddleware(req, res, next) {
-  const header = req.headers.authorization;
+  const token = req.cookies?.accessToken;
 
-  if (!header || !header.startsWith('Bearer ')) {
-    return res.status(401).json({ success: false, error: 'Unauthorized' });
+  if (!token) {
+    return res.status(401).json({
+      success: false,
+      error: 'Пользователь не авторизован',
+    });
   }
-
-  const token = header.split(' ')[1];
 
   try {
     const payload = verifyToken(token);
-    req.user = payload;
+
+    // payload = { userId, role, iat, exp }
+    req.user = {
+      userId: payload.userId,
+      role: payload.role,
+    };
+
     next();
-  } catch {
-    return res.status(401).json({ success: false, error: 'Invalid token' });
+  } catch (err) {
+    return res.status(401).json({
+      success: false,
+      error: 'Неверный или просроченный токен',
+    });
   }
 }
 
