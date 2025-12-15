@@ -76,4 +76,68 @@ router.post('/:jobId/cancel', (req, res) => {
   return res.json({ success: true, message: 'Отмена запрошена' });
 });
 
+// === История задач ===
+router.get('/jobs', authMiddleware, async (req, res) => {
+  try {
+    const userId = req.user.userId;
+
+    const jobs = await prisma.parserJob.findMany({
+      where: { userId },
+      orderBy: { createdAt: 'desc' },
+      select: {
+        id: true,
+        mode: true,
+        status: true,
+        error: true,
+
+        s3InputFileUrl: true,
+        s3OutputUrl: true,
+
+        totalUrls: true,
+        collectedReviews: true,
+
+        createdAt: true,
+        startedAt: true,
+        finishedAt: true,
+      },
+    });
+
+    const result = jobs.map((job) => {
+      const started = job.startedAt ?? job.createdAt;
+      const finished = job.finishedAt ?? null;
+
+      const durationSeconds = started && finished ? Math.floor((finished - started) / 1000) : null;
+
+      return {
+        id: job.id,
+        mode: job.mode,
+        status: job.status,
+        error: job.error,
+
+        inputFileUrl: job.s3InputFileUrl,
+        outputFileUrl: job.s3OutputUrl,
+
+        totalUrls: job.totalUrls ?? 0,
+        collectedReviews: job.collectedReviews ?? 0,
+
+        createdAt: job.createdAt,
+        createdAtHuman: job.createdAt.toLocaleString('ru-RU'),
+
+        durationSeconds,
+      };
+    });
+
+    return res.json({
+      success: true,
+      jobs: result,
+    });
+  } catch (err) {
+    console.error('❌ Ошибка получения истории запусков:', err);
+    return res.status(500).json({
+      success: false,
+      error: 'Не удалось получить историю запусков',
+    });
+  }
+});
+
 module.exports = router;
