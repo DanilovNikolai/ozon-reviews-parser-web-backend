@@ -15,8 +15,7 @@ const { logWithCapture } = require('../utils');
 const { runJob } = require('../services/jobRunner');
 
 // === Создание задачи ===
-router.post('/', async (req, res) => {
-  req.user = { userId: 1 };
+router.post('/', authMiddleware, async (req, res) => {
   const { s3InputFileUrl, mode } = req.body;
   const userId = req.user.userId;
 
